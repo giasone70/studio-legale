@@ -13,7 +13,8 @@ url: ""
 # Lasciare vuoto se il sito usa un dominio proprio oppure il repository
 # si chiama NOMEUTENTE.github.io. Se invece il sito è pubblicato come
 # NOMEUTENTE.github.io/nome-repository, scrivere qui "/nome-repository".
-baseurl: "/studio-legale"
+url: "https://www.studiosilvestro.it"
+baseurl: ""
 
 permalink: pretty
 markdown: kramdown
