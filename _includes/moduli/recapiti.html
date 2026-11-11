@@ -7,6 +7,6 @@
   </div>
   <p class="recapiti-diretti">
     <a href="mailto:{{ site.data.studio.email }}">{{ site.data.studio.email }}</a><br>
-    <a href="tel:{{ site.data.studio.telefono_link }}">{{ site.data.studio.telefono }}</a>
+    {% for tel in site.data.studio.telefoni %}<a href="tel:{{ tel.link }}">{{ tel.numero }}</a>{% unless forloop.last %}<br>{% endunless %}{% endfor %}
   </p>
 </div>
