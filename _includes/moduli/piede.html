@@ -12,7 +12,7 @@
       </div>
       <div>
         <p><a href="mailto:{{ site.data.studio.email }}">{{ site.data.studio.email }}</a><br>
-        <a href="tel:{{ site.data.studio.telefono_link }}">{{ site.data.studio.telefono }}</a></p>
+        {% for tel in site.data.studio.telefoni %}<a href="tel:{{ tel.link }}">{{ tel.numero }}</a>{% unless forloop.last %}<br>{% endunless %}{% endfor %}</p>
         {% if site.data.studio.pec != "" %}<p>PEC: {{ site.data.studio.pec }}</p>{% endif %}
         {% if site.data.studio.partita_iva != "" %}<p>P. IVA {{ site.data.studio.partita_iva }}</p>{% endif %}
         <p><a href="{{ '/informative/' | relative_url }}">Informative</a></p>
