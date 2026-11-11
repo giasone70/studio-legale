@@ -159,6 +159,14 @@ a:focus-visible, button:focus-visible {
   padding: clamp(4rem, 14vw, 9rem) 0 clamp(3.5rem, 11vw, 7rem);
 }
 
+/* Blocco di testo a sinistra, righe centrate fra loro, stesso carattere */
+.apertura-blocco {
+  width: fit-content;
+  max-width: 100%;
+  text-align: center;
+  font-family: var(--titoli);
+}
+
 .apertura h1 {
   margin: 0;
   font-family: var(--titoli);
@@ -170,14 +178,14 @@ a:focus-visible, button:focus-visible {
 
 .apertura-titolare {
   margin: 0.9rem 0 0;
-  font-family: var(--servizio);
-  font-size: clamp(0.85rem, 2.4vw, 1rem);
-  letter-spacing: 0.18em;
+  font-family: var(--titoli);
+  font-size: clamp(0.95rem, 2.6vw, 1.15rem);
+  letter-spacing: 0.14em;
   text-transform: uppercase;
 }
 
 .apertura-motto {
-  margin: 2.5rem 0 0;
+  margin: 2.5rem auto 0;
   padding-top: 1.25rem;
   max-width: 30rem;
   border-top: 2px solid var(--filetto);
