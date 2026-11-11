@@ -8,10 +8,12 @@ motto: Legum omnes servi sumus, ut liberi esse possimus.
 email: info@studiosilvestro.it
 telefono: "(+39) 081 8691209"
 telefono_link: "+390818691209"
+telefono: "(+39) 081 7041411"
+telefono_link: "+390817041411"
 
 # Facoltativi: se compilati compaiono nel piè di pagina.
-partita_iva: ""
-pec: ""
+partita_iva: "03454891213"
+pec: "studiosilvestro@pec.it"
 
 sedi:
   - indirizzo: Via P. Nenni 86
