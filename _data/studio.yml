@@ -6,11 +6,14 @@ titolare: Avv. Gioacchino Alessandro Silvestro
 motto: Legum omnes servi sumus, ut liberi esse possimus.
 
 email: info@studiosilvestro.it
-telefono: "(+39) 081 8691209"
-telefono_link: "+390818691209"
+telefoni:
+  - numero: "(+39) 081 8691209"
+    link: "+390818691209"
+  - numero: "(+39) 081 7041411"
+    link: "+390817041411"
 
 # Facoltativi: se compilati compaiono nel piè di pagina.
-partita_iva: ""
+partita_iva: "03454891213"
 pec: ""
 
 sedi:
