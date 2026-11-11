@@ -1,11 +1,18 @@
 ---
 layout: base
 ---
+{% comment %}
+  Immagine di sfondo dell'intestazione: voce "sfondo" nell'intestazione
+  di ogni pagina (es. sfondo: /assets/img/sfondi/tribunale-1.jpg).
+  Se la voce manca, l'intestazione resta su fondo chiaro.
+{% endcomment %}
 <article class="pagina">
-  <header class="pagina-intestazione">
-    <div class="contenitore">
-      {% if page.sopratitolo %}<p class="sopratitolo">{{ page.sopratitolo }}</p>{% endif %}
-      <h1>{{ page.title }}</h1>
+  <header class="pagina-intestazione{% if page.sfondo %} con-sfondo{% endif %}"{% if page.sfondo %} style="background-image: url('{{ page.sfondo | relative_url }}');{% if page.sfondo_posizione %} background-position: {{ page.sfondo_posizione }};{% endif %}"{% endif %}>
+    <div class="pagina-intestazione-velo">
+      <div class="contenitore">
+        {% if page.sopratitolo %}<p class="sopratitolo">{{ page.sopratitolo }}</p>{% endif %}
+        <h1>{{ page.title }}</h1>
+      </div>
     </div>
   </header>
   <div class="contenitore pagina-corpo">

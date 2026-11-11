@@ -2,6 +2,7 @@
 layout: pagina
 title: Lo studio
 permalink: /lo-studio/
+sfondo: /assets/img/sfondi/tribunale-1.jpg
 description: Lo studio presta attività di consulenza ed assistenza legale in favore di società, enti pubblici, imprenditori, professionisti e clienti individuali.
 ---
 

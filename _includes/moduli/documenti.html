@@ -4,7 +4,7 @@
   <li class="documento">
     <h2>{{ doc.titolo }}</h2>
     <p>
-      <a href="{{ percorso | relative_url }}">{{ doc.etichetta }}</a>
+      <a href="{{ percorso | relative_url }}" data-finestra="{{ doc.titolo }}" target="_blank" rel="noopener">{{ doc.etichetta }}</a>
       <a class="pulsante" href="{{ percorso | relative_url }}" download>Download</a>
     </p>
   </li>
