@@ -1,0 +1,26 @@
+# Configurazione generale del sito.
+# Dopo ogni modifica a questo file GitHub ricompila l'intero sito.
+
+title: Studio Legale Silvestro
+description: Avv. Gioacchino Alessandro Silvestro
+lang: it
+
+# Indirizzo pubblico del sito, senza barra finale.
+# Esempio con dominio proprio:  https://www.studiosilvestro.it
+# Esempio senza dominio:        https://NOMEUTENTE.github.io
+url: ""
+
+# Lasciare vuoto se il sito usa un dominio proprio oppure il repository
+# si chiama NOMEUTENTE.github.io. Se invece il sito è pubblicato come
+# NOMEUTENTE.github.io/nome-repository, scrivere qui "/nome-repository".
+baseurl: "/studio-legale"
+
+permalink: pretty
+markdown: kramdown
+
+# File che restano nel repository ma non vengono pubblicati.
+exclude:
+  - README.md
+  - Gemfile
+  - Gemfile.lock
+  - vendor

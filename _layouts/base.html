@@ -1,0 +1,15 @@
+<!DOCTYPE html>
+<html lang="{{ site.lang | default: 'it' }}">
+<head>
+{% include moduli/head.html %}
+</head>
+<body{% if page.classe %} class="{{ page.classe }}"{% endif %}>
+  <a class="salta" href="#contenuto">Vai al contenuto</a>
+{% include moduli/testata.html %}
+  <main id="contenuto">
+{{ content }}
+  </main>
+{% include moduli/piede.html %}
+  <script src="{{ '/assets/js/menu.js' | relative_url }}" defer></script>
+</body>
+</html>

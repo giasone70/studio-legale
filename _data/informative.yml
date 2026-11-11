@@ -1,0 +1,12 @@
+# Documenti scaricabili della pagina Informative.
+# I file stanno in assets/documenti. Per aggiornare un'informativa basta
+# sostituire il PDF mantenendo lo stesso nome; per aggiungerne una,
+# caricare il PDF e inserire qui un nuovo blocco.
+
+- titolo: Informativa sul trattamento dei dati personali
+  etichetta: Informativa privacy
+  file: informativa-privacy.pdf
+
+- titolo: Informativa sull’utilizzo di strumenti di Intelligenza artificiale
+  etichetta: Informativa IA
+  file: informativa-ia.pdf

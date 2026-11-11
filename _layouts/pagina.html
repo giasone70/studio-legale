@@ -1,0 +1,14 @@
+---
+layout: base
+---
+<article class="pagina">
+  <header class="pagina-intestazione">
+    <div class="contenitore">
+      {% if page.sopratitolo %}<p class="sopratitolo">{{ page.sopratitolo }}</p>{% endif %}
+      <h1>{{ page.title }}</h1>
+    </div>
+  </header>
+  <div class="contenitore pagina-corpo">
+{{ content }}
+  </div>
+</article>

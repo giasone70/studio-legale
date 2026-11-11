@@ -1,0 +1,12 @@
+<div class="recapiti">
+  <h2>{{ site.data.studio.nome }}</h2>
+  <div class="recapiti-sedi">
+    {% for sede in site.data.studio.sedi %}
+    <address>{{ sede.indirizzo }}<br>{{ sede.localita }}</address>
+    {% endfor %}
+  </div>
+  <p class="recapiti-diretti">
+    <a href="mailto:{{ site.data.studio.email }}">{{ site.data.studio.email }}</a><br>
+    <a href="tel:{{ site.data.studio.telefono_link }}">{{ site.data.studio.telefono }}</a>
+  </p>
+</div>

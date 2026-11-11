@@ -1,0 +1,5 @@
+<ul class="strumenti">
+  {% for strumento in site.data.utilita %}
+  <li><a class="strumento" href="{{ strumento.url | relative_url }}">{{ strumento.titolo }}</a></li>
+  {% endfor %}
+</ul>

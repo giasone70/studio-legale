@@ -1,0 +1,15 @@
+{% assign descrizione = page.description | default: site.description %}
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% if page.url == '/' %}{{ site.title }} | {{ site.data.studio.motto }}{% else %}{{ page.title }} | {{ site.title }}{% endif %}</title>
+  <meta name="description" content="{{ descrizione | strip_html | strip_newlines | escape }}">
+  <link rel="canonical" href="{{ page.url | absolute_url }}">
+  <meta property="og:locale" content="it_IT">
+  <meta property="og:site_name" content="{{ site.title }}">
+  <meta property="og:title" content="{{ page.title | default: site.title }}">
+  <meta property="og:description" content="{{ descrizione | strip_html | strip_newlines | escape }}">
+  <meta property="og:url" content="{{ page.url | absolute_url }}">
+  <meta property="og:image" content="{{ site.data.studio.media.logo | absolute_url }}">
+  <link rel="icon" href="{{ site.data.studio.media.logo | relative_url }}">
+  <link rel="apple-touch-icon" href="{{ site.data.studio.media.logo | relative_url }}">
+  <link rel="stylesheet" href="{{ '/assets/css/stile.css' | relative_url }}">

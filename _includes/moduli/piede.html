@@ -1,0 +1,21 @@
+  <footer class="piede">
+    <div class="contenitore piede-griglia">
+      <div>
+        <p class="piede-nome">{{ site.data.studio.nome }}</p>
+        <p>{{ site.data.studio.titolare }}</p>
+        <p class="piede-motto" lang="la">{{ site.data.studio.motto }}</p>
+      </div>
+      <div>
+        {% for sede in site.data.studio.sedi %}
+        <p>{{ sede.indirizzo }}<br>{{ sede.localita }}</p>
+        {% endfor %}
+      </div>
+      <div>
+        <p><a href="mailto:{{ site.data.studio.email }}">{{ site.data.studio.email }}</a><br>
+        <a href="tel:{{ site.data.studio.telefono_link }}">{{ site.data.studio.telefono }}</a></p>
+        {% if site.data.studio.pec != "" %}<p>PEC: {{ site.data.studio.pec }}</p>{% endif %}
+        {% if site.data.studio.partita_iva != "" %}<p>P. IVA {{ site.data.studio.partita_iva }}</p>{% endif %}
+        <p><a href="{{ '/informative/' | relative_url }}">Informative</a></p>
+      </div>
+    </div>
+  </footer>

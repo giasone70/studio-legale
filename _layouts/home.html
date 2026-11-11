@@ -1,0 +1,21 @@
+---
+layout: base
+---
+<section class="apertura" style="background-image: url('{{ site.data.studio.media.testata | relative_url }}');">
+  <div class="apertura-velo">
+    <div class="contenitore">
+      <h1>{{ page.title }}</h1>
+      <p class="apertura-titolare">{{ site.data.studio.titolare }}</p>
+      <p class="apertura-motto" lang="la">{{ site.data.studio.motto }}</p>
+    </div>
+  </div>
+</section>
+
+<div class="contenitore">
+  <nav class="percorsi" aria-label="Sezioni del sito">
+    {% for voce in site.data.navigazione %}{% unless voce.url == '/' %}
+    <a class="percorso" href="{{ voce.url | relative_url }}">{{ voce.titolo }}</a>
+    {% endunless %}{% endfor %}
+  </nav>
+{{ content }}
+</div>

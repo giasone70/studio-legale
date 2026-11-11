@@ -1,0 +1,15 @@
+# Voci del menu principale, nell'ordine in cui compaiono.
+# Per aggiungere una pagina al menu: una nuova coppia titolo / url.
+
+- titolo: Studio Legale
+  url: /
+- titolo: Lo studio
+  url: /lo-studio/
+- titolo: Chi siamo
+  url: /chi-siamo/
+- titolo: Informative
+  url: /informative/
+- titolo: Utilità
+  url: /utilita/
+- titolo: Contatti
+  url: /contatti/

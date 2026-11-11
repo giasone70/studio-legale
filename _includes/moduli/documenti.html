@@ -1,0 +1,12 @@
+<ul class="documenti">
+  {% for doc in site.data.informative %}
+  {% assign percorso = '/assets/documenti/' | append: doc.file %}
+  <li class="documento">
+    <h2>{{ doc.titolo }}</h2>
+    <p>
+      <a href="{{ percorso | relative_url }}">{{ doc.etichetta }}</a>
+      <a class="pulsante" href="{{ percorso | relative_url }}" download>Download</a>
+    </p>
+  </li>
+  {% endfor %}
+</ul>

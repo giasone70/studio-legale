@@ -1,0 +1,7 @@
+# Strumenti elencati nella pagina Utilità.
+# Ogni strumento vive in una propria cartella dentro utilita/ ed è
+# pubblicato così com'è, senza passare dai layout del sito.
+# Per aggiungerne uno: creare la cartella e inserire qui un nuovo blocco.
+
+- titolo: Calcolatore termini impugnazioni penali
+  url: /utilita/calcolo-termini-penali/

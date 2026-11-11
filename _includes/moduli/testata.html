@@ -1,0 +1,10 @@
+  <header class="testata">
+    <div class="contenitore testata-riga">
+      <a class="marchio" href="{{ '/' | relative_url }}">
+        <img src="{{ site.data.studio.media.emblema | relative_url }}" alt="" width="44" height="44">
+        <span>{{ site.data.studio.nome }}</span>
+      </a>
+      <button class="menu-pulsante" type="button" aria-expanded="false" aria-controls="menu-principale">Menu</button>
+{% include moduli/menu.html %}
+    </div>
+  </header>
