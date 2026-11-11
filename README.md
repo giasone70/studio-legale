@@ -54,12 +54,6 @@ Il calcolatore è il file `utilita/calcolo-termini-penali/index.html`, copia ide
 
 Il vecchio indirizzo calcoloterminipenali.studiosilvestro.it resta attivo finché il vecchio repository è pubblicato. Quando il nuovo sito è in linea, si può sostituire il contenuto del vecchio repository con una pagina di reindirizzamento al nuovo indirizzo.
 
-## Pubblicazione
-
-1. Creare su GitHub un repository pubblico di nome `studio-legale` e caricarvi tutto il contenuto di questa cartella.
-2. In Settings > Pages scegliere “Deploy from a branch”, ramo `main`, cartella `/ (root)`.
-3. Il sito risponde a `NOMEUTENTE.github.io/studio-legale/`. In `_config.yml` la voce `baseurl` è già impostata su `/studio-legale`: va cambiata solo se il repository ha un altro nome.
-4. Per usare un dominio proprio (per esempio www.studiosilvestro.it): indicarlo in Settings > Pages > Custom domain, creare presso il gestore del dominio un record CNAME che punta a `NOMEUTENTE.github.io` e in `_config.yml` svuotare `baseurl` (`""`) e compilare `url`.
 
 ## Modifiche frequenti
 
