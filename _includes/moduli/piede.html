@@ -3,18 +3,18 @@
       <div>
         <p class="piede-nome">{{ site.data.studio.nome }}</p>
         <p>{{ site.data.studio.titolare }}</p>
-        <p class="piede-motto" lang="la">{{ site.data.studio.motto }}</p>
       </div>
       <div>
         {% for sede in site.data.studio.sedi %}
-        <p>{{ sede.indirizzo }}<br>{{ sede.localita }}</p>
+        <p>{{ sede.indirizzo }}, {{ sede.localita }}</p>
         {% endfor %}
       </div>
       <div>
         <p><a href="mailto:{{ site.data.studio.email }}">{{ site.data.studio.email }}</a><br>
         {% for tel in site.data.studio.telefoni %}<a href="tel:{{ tel.link }}">{{ tel.numero }}</a>{% unless forloop.last %}<br>{% endunless %}{% endfor %}</p>
         {% if site.data.studio.pec != "" %}<p>PEC: {{ site.data.studio.pec }}</p>{% endif %}
-        {% if site.data.studio.partita_iva != "" %}<p>P. IVA {{ site.data.studio.partita_iva }}</p>{% endif %}
+      </div>
+      <div>
         <p><a href="{{ '/informative/' | relative_url }}">Informative</a><br>
         <a href="{{ '/privacy/' | relative_url }}">Privacy del sito</a></p>
       </div>

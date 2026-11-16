@@ -1,5 +1,6 @@
 ---
 layout: pagina
+classe: testo-lungo
 title: Curriculum vitae et studiorum
 sopratitolo: Avv. Gioacchino Alessandro Silvestro
 permalink: /chi-siamo/curriculum-vitae-et-studiorum/

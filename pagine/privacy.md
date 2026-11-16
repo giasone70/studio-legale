@@ -1,5 +1,6 @@
 ---
 layout: pagina
+classe: testo-lungo
 title: Privacy del sito
 permalink: /privacy/
 sfondo: /assets/img/sfondi/tribunale-2.jpg

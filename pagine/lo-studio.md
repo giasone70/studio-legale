@@ -1,5 +1,6 @@
 ---
 layout: pagina
+classe: testo-lungo
 title: Lo studio
 permalink: /lo-studio/
 sfondo: /assets/img/sfondi/tribunale-1.jpg
