@@ -422,9 +422,9 @@ a:focus-visible, button:focus-visible {
 /* Finestra a comparsa (calcolatore e informative) */
 
 .finestra {
-  width: min(1400px, 96vw);
-  height: 92vh;
-  height: 92dvh;
+  width: min(1400px, 97vw);
+  height: 96vh;
+  height: 96dvh;
   max-width: none;
   max-height: none;
   margin: auto;
@@ -443,7 +443,7 @@ a:focus-visible, button:focus-visible {
   display: flex;
   align-items: center;
   gap: 0.75rem 1.25rem;
-  padding: 0.55rem 0.6rem 0.55rem 1.1rem;
+  padding: 0.35rem 0.5rem 0.35rem 1.1rem;
   background: var(--notte);
   color: #fff;
   font-family: var(--servizio);
@@ -486,6 +486,18 @@ html.finestra-aperta { overflow: hidden; }
     border-radius: 0;
   }
   .finestra-apri { display: none; }
+}
+
+/* Schermi bassi (per esempio portatili con ridimensionamento di Windows al 125%) */
+@media (max-height: 36rem) and (min-width: 40rem) {
+  .testata-riga { padding-top: 0.3rem; padding-bottom: 0.3rem; }
+  .marchio img { width: 36px; height: 36px; }
+  .piede-griglia { padding-top: 0.8rem; padding-bottom: 0.5rem; }
+  .piede p { margin-bottom: 0.25rem; line-height: 1.4; }
+  .piede-fondo { padding-top: 0.45rem; padding-bottom: 0.5rem; }
+  .documento { padding: 0.6rem 0; }
+  .recapiti-sedi { margin: 0.5rem 0 0.75rem; }
+  .recapiti address { padding: 0.6rem 1rem; }
 }
 
 @media (prefers-reduced-motion: reduce) {

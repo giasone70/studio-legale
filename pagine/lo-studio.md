@@ -15,4 +15,6 @@ Nei confronti dei meno abbienti è garantita l’assistenza volta ad avvalersi d
 
 Grazie all’esperienza maturata, alla specializzazione ed al costante aggiornamento, lo studio è in grado di mettere a disposizione dei propri clienti una collaudata competenza, oltre che nel campo del diritto penale e delle procedure per l’applicazione di sanzioni amministrative, anche in quello del diritto di famiglia e della protezione dei minori.
 
+Lo studio ha maturato una discreta esperienza nella redazione dei ricorsi per cassazione e nella successiva difesa innanzi alla Corte Suprema, anche su incarico di colleghi ai quali si associa nel mandato.
+
 La struttura snella e dinamica garantisce ai clienti risposte immediate, chiare e precise, con un approccio aperto, costante e del tutto personalizzato, improntato alla massima trasparenza ed efficienza.

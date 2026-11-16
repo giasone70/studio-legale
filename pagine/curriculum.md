@@ -12,6 +12,8 @@ description: Abilitato al patrocinio innanzi alla Corte di Cassazione e alle alt
 
 Abilitato al patrocinio innanzi alla Corte di Cassazione e alle altre Giurisdizioni Superiori dal 2014, è iscritto all’Albo degli Avvocati presso il Tribunale di Napoli dal maggio 2000.
 
+È iscritto nell’elenco degli avvocati per il patrocinio a spese dello Stato (art. 81 D.P.R. 30 maggio 2002, n. 115), in ambito penale, civile, della volontaria giurisdizione e tributario.
+
 Svolge la propria attività professionale prevalentemente nel settore penale, nel quale ha maturato una ricca esperienza, in particolare nel campo dei procedimenti in materia di responsabilità di professionisti, dei tecnici e dei dipendenti pubblici in vari ambiti, con particolare riferimento a quelli della responsabilità penale da circolazione stradale e da infortunio sul lavoro, quello ambientale e quello professionale dei sanitari (colpe mediche) e annovera tra i propri patrocinati anche Società ed Enti Pubblici, Aziende Ospedaliere, Enti territoriali e i relativi dipendenti.
 
 Ha conseguito la Laurea in Giurisprudenza presso l’Università degli Studi di Napoli “Federico II”, discutendo la tesi in Procedura penale dal titolo “<em>L’invalidità nel nuovo processo penale</em>” – Relatore Ch.mo Prof. Nicola Carulli.
