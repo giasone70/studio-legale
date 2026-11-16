@@ -4,33 +4,14 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Calcolatore Termini Impugnazioni Penali</title>
-  <!-- Tailwind CSS -->
-  <script src="https://cdn.tailwindcss.com"></script>
-  <!-- FontAwesome Icons -->
-  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-  <!-- Inter Font -->
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-  <script>
-    tailwind.config = {
-      theme: {
-        extend: {
-          fontFamily: { sans: ['Inter', 'sans-serif'] },
-          colors: {
-            brand: {
-              50: '#f0f7ff',
-              100: '#e0effe',
-              500: '#3b82f6',
-              600: '#2563eb',
-              700: '#1d4ed8',
-              800: '#1e40af',
-              900: '#1e3a8a',
-              950: '#0f172a',
-            }
-          }
-        }
-      }
-    }
-  </script>
+  <!-- Risorse locali: nessun collegamento a servizi esterni per grafica, icone e caratteri.
+       tailwind.css: Tailwind CSS 3.4 compilato con la configurazione originale (colori "brand", carattere Inter);
+       va rigenerato se si aggiungono nuove classi Tailwind al file.
+       fontawesome.css: Font Awesome Free 6.4.0, icone "solid".
+       inter.css: carattere Inter, pesi 300-700. -->
+  <link rel="stylesheet" href="risorse/inter.css">
+  <link rel="stylesheet" href="risorse/fontawesome.css">
+  <link rel="stylesheet" href="risorse/tailwind.css">
   <style>
     /* Custom compact scrollbar for tooltips or tiny popups if needed */
     ::-webkit-scrollbar { width: 4px; height: 4px; }
@@ -55,9 +36,10 @@
         <h1 class="text-base font-bold text-slate-100 tracking-tight leading-tight flex items-center gap-2">
           Calcolatore Termini Impugnazioni Penali
           <span class="text-[10px] uppercase font-semibold px-2 py-0.5 rounded bg-brand-500/10 text-brand-400 border border-brand-500/20">c.p.p. VIGENTE</span>
+          <span id="versioneCalcolatore" class="text-[10px] font-medium text-slate-500"></span>
         </h1>
         <p class="text-xs text-slate-400 hidden sm:block">Pannello operativo rapido per la verifica dei termini ex artt. 544, 548, 585 c.p.p.</p>
-        <p class="text-xs text-slate-400 hidden sm:block">A cura dell'Avv. Gioacchino Alessandro Silvestro - www.studiosilvestro.it - © tutti i diritti riservati</p>
+        <p class="text-xs text-slate-400 hidden sm:block">A cura dell'Avv. Gioacchino Alessandro Silvestro - www.studiosilvestro.it - © 2026 tutti i diritti riservati - <a href="/privacy/" target="_top" class="underline hover:text-slate-200">Privacy</a></p>
         <p class="text-xs text-slate-400 hidden sm:block"></p>
         <p class="text-xs text-slate-400 hidden sm:block">ATTENZIONE: l'utente è tenuto a verificare la correttezza dei calcoli; non si assumono responsabilità di nessun tipo.</span>
       </div>
@@ -280,6 +262,10 @@
 
   <!-- Calculation Logic Script -->
   <script>
+    // Numero di versione del calcolatore (A.B.C: correzioni / modifiche / cambiamenti radicali)
+    const VERSIONE = '2.0.0';
+    document.getElementById('versioneCalcolatore').textContent = 'v ' + VERSIONE;
+
     // Data in formato AAAA-MM-GG secondo il calendario locale.
     // (La conversione in ora UTC restituirebbe in Italia il giorno precedente.)
     function ymd(dateObj) {
@@ -633,7 +619,7 @@ Dies a Quo Impugnazione: ${diesAQuo}
 Scadenza naturale (senza proroghe per festivi): ${scadenzaNaturale}
 SCADENZA ULTIMA IMPUGNAZIONE: ${dataScadenza} (${giornoSettimana})
 Riferimenti: artt. 544, 548, 585, 172 c.p.p.
-Generato da Calcolatore Penale Dashboard`;
+Generato da Calcolatore Termini Impugnazioni Penali v ${VERSIONE} - www.studiosilvestro.it`;
 
       // Executing fallback clipboard copy for iframe compliance
       const dummy = document.createElement("textarea");
@@ -660,5 +646,8 @@ Generato da Calcolatore Penale Dashboard`;
       resetForm();
     };
   </script>
+  <!-- Cloudflare Web Analytics -->
+  <script type="module" src="https://static.cloudflareinsights.com/beacon.min.js" data-cf-beacon='{"token": "691e09c0fca148ef82ed98e7919c2d45"}'></script>
+  <!-- End Cloudflare Web Analytics -->
 </body>
 </html>

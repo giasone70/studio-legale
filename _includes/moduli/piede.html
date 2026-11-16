@@ -15,7 +15,9 @@
         {% for tel in site.data.studio.telefoni %}<a href="tel:{{ tel.link }}">{{ tel.numero }}</a>{% unless forloop.last %}<br>{% endunless %}{% endfor %}</p>
         {% if site.data.studio.pec != "" %}<p>PEC: {{ site.data.studio.pec }}</p>{% endif %}
         {% if site.data.studio.partita_iva != "" %}<p>P. IVA {{ site.data.studio.partita_iva }}</p>{% endif %}
-        <p><a href="{{ '/informative/' | relative_url }}">Informative</a></p>
+        <p><a href="{{ '/informative/' | relative_url }}">Informative</a><br>
+        <a href="{{ '/privacy/' | relative_url }}">Privacy del sito</a></p>
       </div>
     </div>
+{% include moduli/copyright.html %}
   </footer>

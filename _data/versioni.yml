@@ -1,0 +1,7 @@
+# Numeri di versione (forma A.B.C).
+# C: correzioni; B: aggiunte o modifiche visibili; A: cambiamenti radicali.
+# Il sito ha un proprio numero, mostrato nel piè di pagina.
+# Ogni applicazione in utilita/ ha il proprio numero scritto nel suo file
+# (per il calcolatore: costante VERSIONE in utilita/calcolo-termini-penali/index.html).
+
+sito: 1.1.0

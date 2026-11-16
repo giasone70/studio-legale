@@ -52,7 +52,21 @@ Sugli smartphone che non visualizzano i PDF all’interno di una pagina, le info
 
 Il calcolatore è il file `utilita/calcolo-termini-penali/index.html`, copia identica byte per byte dell’originale; la finestra a comparsa lo mostra senza modificarlo. Jekyll pubblica senza alcuna trasformazione i file privi di intestazione `---`, quindi risponde tale e quale all’indirizzo `/utilita/calcolo-termini-penali/`. Per aggiornarlo basta sostituire quel file.
 
-Il vecchio indirizzo calcoloterminipenali.studiosilvestro.it resta attivo finché il vecchio repository è pubblicato. Quando il nuovo sito è in linea, si può sostituire il contenuto del vecchio repository con una pagina di reindirizzamento al nuovo indirizzo.
+Il numero di versione del calcolatore è la costante `VERSIONE` all’inizio dello script, nello stesso file; compare accanto al titolo e nel report copiato.
+
+Il calcolatore non carica nulla da servizi esterni, a parte le statistiche: grafica, icone e caratteri sono nella cartella `utilita/calcolo-termini-penali/risorse/`. `tailwind.css` è Tailwind CSS 3.4 già compilato e contiene solo le classi usate dal calcolatore. Se si modifica il file aggiungendo classi Tailwind nuove, va rigenerato con il comando scritto in `risorse/tailwind.config.js`, che richiede Node.js. `fontawesome.css` contiene le icone Font Awesome Free 6.4.0 (solo lo stile “solid”), `inter.css` il carattere Inter nei pesi 300-700. Le licenze sono nella stessa cartella.
+
+## Versioni e copyright
+
+Il piè di pagina riporta il copyright (dal 2026 all’anno della compilazione) e il numero di versione del sito, scritto in `_data/versioni.yml`. Sito e applicazioni hanno numeri separati, nella forma A.B.C: si aumenta C per una correzione, B per un’aggiunta o una modifica visibile (azzerando C), A per un cambiamento radicale (azzerando B e C). Il testo del copyright è nel modulo `_includes/moduli/copyright.html`.
+
+## Privacy
+
+La pagina `pagine/privacy.md` (indirizzo `/privacy/`) contiene l’informativa sui dati di navigazione del sito ed è collegata nel piè di pagina e nell’intestazione del calcolatore. Va aggiornata se cambiano l’hosting, il servizio di statistiche o si aggiungono servizi esterni, correggendo anche la data di ultimo aggiornamento in fondo al testo.
+
+## Statistiche delle visite
+
+Le visite sono contate da Cloudflare Web Analytics, senza cookie; i dati si consultano solo dall’account Cloudflare, alla voce “Web Analytics”. Il token è in `_data/statistiche.yml` (lasciandolo vuoto le statistiche si disattivano) e il modulo è `_includes/moduli/statistiche.html`. Il calcolatore ha la stessa riga nel proprio file, così le sue aperture risultano alla voce `/utilita/calcolo-termini-penali/`. Una nuova applicazione in `utilita/` va contata aggiungendo la stessa riga prima di `</body>`.
 
 
 ## Modifiche frequenti

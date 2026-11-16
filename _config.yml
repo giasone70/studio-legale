@@ -8,12 +8,11 @@ lang: it
 # Indirizzo pubblico del sito, senza barra finale.
 # Esempio con dominio proprio:  https://www.studiosilvestro.it
 # Esempio senza dominio:        https://NOMEUTENTE.github.io
-url: ""
+url: "https://www.studiosilvestro.it"
 
 # Lasciare vuoto se il sito usa un dominio proprio oppure il repository
 # si chiama NOMEUTENTE.github.io. Se invece il sito è pubblicato come
 # NOMEUTENTE.github.io/nome-repository, scrivere qui "/nome-repository".
-url: "https://www.studiosilvestro.it"
 baseurl: ""
 
 permalink: pretty

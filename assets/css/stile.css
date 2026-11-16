@@ -389,6 +389,17 @@ a:focus-visible, button:focus-visible {
 }
 .piede-motto { font-family: var(--titoli); font-style: italic; }
 
+.piede-fondo {
+  padding-top: 1rem;
+  padding-bottom: 1.25rem;
+  border-top: 1px solid rgba(255, 255, 255, 0.12);
+  font-size: 0.75rem;
+  color: #9fb0a6;
+}
+.piede-fondo p { margin: 0; }
+.piede-versione { white-space: nowrap; }
+.piede-versione::before { content: "\00b7"; margin: 0 0.5em; }
+
 /* Finestra a comparsa (calcolatore e informative) */
 
 .finestra {

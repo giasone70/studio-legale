@@ -1,0 +1,6 @@
+# Statistiche delle visite (Cloudflare Web Analytics).
+# I dati si consultano solo dal proprio account Cloudflare, voce "Web Analytics".
+# Lasciando il token vuoto ("") le statistiche si disattivano su tutto il sito.
+# Il calcolatore ha la stessa riga di Cloudflare scritta nel proprio file.
+
+cloudflare_token: "691e09c0fca148ef82ed98e7919c2d45"

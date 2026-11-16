@@ -1,0 +1,5 @@
+{% if site.data.statistiche.cloudflare_token and site.data.statistiche.cloudflare_token != "" %}
+  <!-- Cloudflare Web Analytics -->
+  <script type="module" src="https://static.cloudflareinsights.com/beacon.min.js" data-cf-beacon='{"token": "{{ site.data.statistiche.cloudflare_token }}"}'></script>
+  <!-- End Cloudflare Web Analytics -->
+{% endif %}
