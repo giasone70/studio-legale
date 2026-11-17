@@ -69,6 +69,10 @@ La pagina `pagine/privacy.md` (indirizzo `/privacy/`) contiene l’informativa s
 Le visite sono contate da Cloudflare Web Analytics, senza cookie; i dati si consultano solo dall’account Cloudflare, alla voce “Web Analytics”. Il token è in `_data/statistiche.yml` (lasciandolo vuoto le statistiche si disattivano) e il modulo è `_includes/moduli/statistiche.html`. Il calcolatore ha la stessa riga nel proprio file, così le sue aperture risultano alla voce `/utilita/calcolo-termini-penali/`. Una nuova applicazione in `utilita/` va contata aggiungendo la stessa riga prima di `</body>`.
 
 
+## Professionisti
+
+La pagina Chi siamo elenca i professionisti scritti in `_data/professionisti.yml`, ciascuno con fotografia, sede e collegamento al curriculum. Ogni curriculum è una pagina in `pagine/` (`curriculum.md` per l’Avv. Silvestro, `curriculum-calise.md` per l’Avv. Calise); la fotografia si indica con il modulo `foto-titolare.html`, come nelle pagine esistenti.
+
 ## Modifiche frequenti
 
 Nuova pagina: creare un file in `pagine/` copiando l’intestazione di `lo-studio.md` (titolo e `permalink`), poi aggiungere la voce in `_data/navigazione.yml`.

@@ -1,3 +1,10 @@
+{% comment %}
+  Fotografia nel curriculum. Senza parametri mostra l'Avv. Silvestro;
+  per un altro professionista si indicano i parametri foto e nome
+  (vedi pagine/curriculum-calise.md).
+{% endcomment %}
+{% assign foto = include.foto | default: site.data.studio.media.foto_titolare %}
+{% assign nome = include.nome | default: site.data.studio.titolare %}
 <figure class="foto-titolare">
-  <img src="{{ site.data.studio.media.foto_titolare | relative_url }}" alt="{{ site.data.studio.titolare }}" width="480" height="444">
+  <img src="{{ foto | relative_url }}" alt="{{ nome }}">
 </figure>

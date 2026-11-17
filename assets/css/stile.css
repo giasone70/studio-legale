@@ -288,10 +288,20 @@ a:focus-visible, button:focus-visible {
 
 /* Moduli */
 
+.profili {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(21rem, 1fr));
+  gap: 1rem;
+}
+.pagina-corpo > .profili { max-width: none; }
 .profilo {
-  display: inline-flex;
+  display: flex;
   align-items: center;
   gap: 1.25rem;
+  height: 100%;
   padding: 1rem 1.5rem 1rem 1rem;
   background: var(--carta-chiara);
   border: 1px solid var(--linea);
@@ -299,8 +309,19 @@ a:focus-visible, button:focus-visible {
   text-decoration: none;
   font-family: var(--titoli);
   font-size: 1.3rem;
+  line-height: 1.3;
 }
-.profilo img { width: 95px; height: 88px; object-fit: cover; }
+.profilo img { width: 95px; height: 88px; object-fit: cover; object-position: center 20%; flex: none; }
+.profilo-nome { display: block; }
+.profilo-sede {
+  display: block;
+  margin-top: 0.3rem;
+  color: var(--inchiostro-tenue);
+  font-family: var(--servizio);
+  font-size: 0.75rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
 .profilo:hover { border-color: var(--accento); color: var(--accento); }
 
 /* Fotografia del curriculum: affiancata al testo sugli schermi larghi */

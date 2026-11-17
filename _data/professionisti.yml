@@ -1,0 +1,19 @@
+# Professionisti mostrati nella pagina Chi siamo, nell'ordine in cui compaiono.
+# Per aggiungerne uno: caricare la fotografia in assets/img, creare la pagina
+# del curriculum in pagine/ (copiando curriculum-calise.md) e aggiungere qui
+# un blocco. Le righe che iniziano con # sono ignorate.
+
+- nome: Avv. Gioacchino Alessandro Silvestro
+  sede: Afragola e Napoli
+  foto: /assets/img/avv-silvestro.jpg
+  curriculum: /chi-siamo/curriculum-vitae-et-studiorum/
+
+- nome: Avv. Mariangela Calise
+  sede: Ischia
+  foto: /assets/img/avv-calise.jpg
+  curriculum: /chi-siamo/mariangela-calise/
+
+# - nome: Avv. Fabienne Cotza
+#   sede: Roma
+#   foto: /assets/img/avv-cotza.jpg
+#   curriculum: /chi-siamo/fabienne-cotza/

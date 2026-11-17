@@ -1,4 +1,13 @@
-<a class="profilo" href="{{ '/chi-siamo/curriculum-vitae-et-studiorum/' | relative_url }}">
-  <img src="{{ site.data.studio.media.foto_titolare | relative_url }}" alt="" width="95" height="88">
-  <span>{{ site.data.studio.titolare }}</span>
-</a>
+<ul class="profili">
+  {% for persona in site.data.professionisti %}
+  <li>
+    <a class="profilo" href="{{ persona.curriculum | relative_url }}">
+      <img src="{{ persona.foto | relative_url }}" alt="" width="95" height="88">
+      <span>
+        <span class="profilo-nome">{{ persona.nome }}</span>
+        {% if persona.sede %}<span class="profilo-sede">{{ persona.sede }}</span>{% endif %}
+      </span>
+    </a>
+  </li>
+  {% endfor %}
+</ul>
