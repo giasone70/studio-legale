@@ -293,7 +293,7 @@ a:focus-visible, button:focus-visible {
   margin: 0;
   padding: 0;
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(21rem, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 26rem), 1fr));
   gap: 1rem;
 }
 .pagina-corpo > .profili { max-width: none; }
@@ -312,7 +312,11 @@ a:focus-visible, button:focus-visible {
   line-height: 1.3;
 }
 .profilo img { width: 95px; height: 88px; object-fit: cover; object-position: center 20%; flex: none; }
-.profilo-nome { display: block; }
+.profilo-nome { display: block; white-space: nowrap; }
+/* Schermi stretti: fotografia sopra il nome, così il nome resta su una riga */
+@media (max-width: 30rem) {
+  .profilo { flex-direction: column; align-items: flex-start; gap: 0.8rem; padding: 1rem; font-size: 1.15rem; }
+}
 .profilo-sede {
   display: block;
   margin-top: 0.3rem;
