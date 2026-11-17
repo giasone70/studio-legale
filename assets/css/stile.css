@@ -288,21 +288,24 @@ a:focus-visible, button:focus-visible {
 
 /* Moduli */
 
+/* Schede dei professionisti: ogni scheda è larga quanto il nome che contiene,
+   così il nome resta su una riga con qualunque carattere installato. */
 .profili {
   list-style: none;
   margin: 0;
   padding: 0;
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(min(100%, 26rem), 1fr));
+  display: flex;
+  flex-wrap: wrap;
   gap: 1rem;
 }
 .pagina-corpo > .profili { max-width: none; }
+.profili li { flex: 0 1 auto; max-width: 100%; }
 .profilo {
   display: flex;
   align-items: center;
   gap: 1.25rem;
   height: 100%;
-  padding: 1rem 1.5rem 1rem 1rem;
+  padding: 1rem 1.75rem 1rem 1rem;
   background: var(--carta-chiara);
   border: 1px solid var(--linea);
   color: var(--inchiostro);
@@ -313,9 +316,12 @@ a:focus-visible, button:focus-visible {
 }
 .profilo img { width: 95px; height: 88px; object-fit: cover; object-position: center 20%; flex: none; }
 .profilo-nome { display: block; white-space: nowrap; }
-/* Schermi stretti: fotografia sopra il nome, così il nome resta su una riga */
+/* Smartphone: fotografia sopra il nome; se lo schermo è troppo stretto
+   il nome può andare a capo invece di uscire dalla scheda. */
 @media (max-width: 30rem) {
-  .profilo { flex-direction: column; align-items: flex-start; gap: 0.8rem; padding: 1rem; font-size: 1.15rem; }
+  .profili li { flex-basis: 100%; }
+  .profilo { flex-direction: column; align-items: flex-start; gap: 0.8rem; padding: 1rem; font-size: 1.1rem; }
+  .profilo-nome { white-space: normal; }
 }
 .profilo-sede {
   display: block;
