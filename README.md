@@ -71,7 +71,7 @@ Le visite sono contate da Cloudflare Web Analytics, senza cookie; i dati si cons
 
 ## Professionisti
 
-La pagina Chi siamo elenca i professionisti scritti in `_data/professionisti.yml`, ciascuno con fotografia, sede e collegamento al curriculum. Ogni curriculum è una pagina in `pagine/` (`curriculum.md` per l’Avv. Silvestro, `curriculum-calise.md` per l’Avv. Calise); la fotografia si indica con il modulo `foto-titolare.html`, come nelle pagine esistenti.
+La pagina Chi siamo elenca i professionisti scritti in `_data/professionisti.yml`, ciascuno con fotografia, sede e collegamento al curriculum. Ogni curriculum è una pagina in `pagine/` (`curriculum.md` per l’Avv. Silvestro, `curriculum-calise.md` per l’Avv. Calise, `curriculum-cotza.md` per l’Avv. Cotza); la fotografia si indica con il modulo `foto-titolare.html`, come nelle pagine esistenti.
 
 ## Modifiche frequenti
 
