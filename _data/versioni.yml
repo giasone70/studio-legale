@@ -4,4 +4,4 @@
 # Ogni applicazione in utilita/ ha il proprio numero scritto nel suo file
 # (per il calcolatore: costante VERSIONE in utilita/calcolo-termini-penali/index.html).
 
-sito: 1.4.0
+sito: 1.4.1
