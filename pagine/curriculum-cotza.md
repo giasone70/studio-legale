@@ -4,7 +4,8 @@ classe: testo-lungo
 title: Curriculum vitae et studiorum
 sopratitolo: Avv. Fabienne Cotza
 permalink: /chi-siamo/fabienne-cotza/
-sfondo: /assets/img/sfondi/tribunale-1.jpg
+sfondo: /assets/img/sfondi/tribunale-roma.jpg
+sfondo_posizione: center 45%
 description: Avv. Fabienne Cotza, iscritta all’Albo degli Avvocati di Roma dal 2007 e abilitata al patrocinio innanzi alla Corte di Cassazione e alle altre Giurisdizioni Superiori dal 2022.
 ---
 

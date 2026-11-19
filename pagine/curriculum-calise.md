@@ -4,7 +4,8 @@ classe: testo-lungo
 title: Curriculum vitae et studiorum
 sopratitolo: Avv. Mariangela Calise
 permalink: /chi-siamo/mariangela-calise/
-sfondo: /assets/img/sfondi/tribunale-4.jpg
+sfondo: /assets/img/sfondi/tribunale-ischia.jpg
+sfondo_posizione: 70% 93%
 description: Avv. Mariangela Calise. Abilitata all’esercizio della professione forense presso la Corte di Appello di Napoli nel dicembre 2002, svolge la propria attività nel settore civile e in quello penale, prevalentemente a Ischia e Napoli.
 ---
 
