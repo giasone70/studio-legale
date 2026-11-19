@@ -1,5 +1,14 @@
 <ul class="strumenti">
-  {% for strumento in site.data.utilita %}
+  {% for strumento in site.data.utilita %}{% unless strumento.esterno %}
   <li><a class="strumento" href="{{ strumento.url | relative_url }}"{% if strumento.finestra %} data-finestra="{{ strumento.titolo }}"{% endif %}>{{ strumento.titolo }}</a></li>
+  {% endunless %}{% endfor %}
+</ul>
+{% assign esterni = site.data.utilita | where: "esterno", true %}
+{% if esterni.size > 0 %}
+<h2 class="collegamenti-titolo">Collegamenti esterni</h2>
+<ul class="collegamenti">
+  {% for link in esterni %}
+  <li><a href="{{ link.url }}" target="_blank" rel="noopener">{{ link.titolo }}</a>{% if link.fonte %} <span class="collegamenti-fonte">{{ link.fonte }}</span>{% endif %}</li>
   {% endfor %}
 </ul>
+{% endif %}

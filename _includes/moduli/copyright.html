@@ -1,5 +1,5 @@
 {% assign anno_inizio = 2026 %}
 {% assign anno = site.time | date: "%Y" | plus: 0 %}
     <div class="contenitore piede-fondo">
-      <p>&copy; {{ anno_inizio }}{% if anno > anno_inizio %}-{{ anno }}{% endif %} {{ site.data.studio.titolare }}. Tutti i diritti riservati.{% if site.data.studio.partita_iva != "" %} <span class="piede-iva">P. IVA {{ site.data.studio.partita_iva }}</span>{% endif %} <span class="piede-versione">Versione {{ site.data.versioni.sito }}</span></p>
+      <p>&copy; {{ anno_inizio }}{% if anno > anno_inizio %}-{{ anno }}{% endif %} {{ site.data.studio.titolare }}. Tutti i diritti riservati.{% if site.data.studio.ordine %} <span class="piede-iva">{{ site.data.studio.ordine }}</span>{% endif %}{% if site.data.studio.partita_iva != "" %} <span class="piede-iva">P. IVA {{ site.data.studio.partita_iva }}</span>{% endif %} <span class="piede-versione">Versione {{ site.data.versioni.sito }}</span></p>
     </div>

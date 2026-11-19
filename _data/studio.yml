@@ -13,6 +13,8 @@ telefoni:
     link: "+390817041411"
 
 # Facoltativi: se compilati compaiono nel piè di pagina.
+# Ordine di appartenenza del titolare (art. 35, comma 3, Codice deontologico forense)
+ordine: Ordine degli Avvocati di Napoli
 partita_iva: "03454891213"
 pec: ""
 

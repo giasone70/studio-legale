@@ -1,10 +1,35 @@
-# Strumenti elencati nella pagina Utilità.
-# Ogni strumento vive in una propria cartella dentro utilita/ ed è
-# pubblicato così com'è, senza passare dai layout del sito.
-# Per aggiungerne uno: creare la cartella e inserire qui un nuovo blocco.
-# finestra: true  -> si apre nella finestra a comparsa
-# finestra: false -> si apre come pagina normale
+# Voci della pagina Utilità.
+# Strumenti dello studio: ogni strumento vive in una propria cartella dentro
+# utilita/ ed è pubblicato così com'è, senza passare dai layout del sito.
+#   finestra: true  -> si apre nella finestra a comparsa
+#   finestra: false -> si apre come pagina normale
+# Collegamenti esterni (esterno: true): si aprono in una nuova scheda.
 
 - titolo: Calcolatore termini impugnazioni penali
   url: /utilita/calcolo-termini-penali/
   finestra: true
+
+- titolo: Codice penale
+  fonte: Brocardi.it
+  url: https://www.brocardi.it/codice-penale/
+  esterno: true
+
+- titolo: Codice di procedura penale
+  fonte: Brocardi.it
+  url: https://www.brocardi.it/codice-di-procedura-penale/
+  esterno: true
+
+- titolo: Codice civile
+  fonte: Brocardi.it
+  url: https://www.brocardi.it/codice-civile/
+  esterno: true
+
+- titolo: Codice di procedura civile
+  fonte: Brocardi.it
+  url: https://www.brocardi.it/codice-di-procedura-civile/
+  esterno: true
+
+- titolo: Sentenze civili e penali della Corte di Cassazione
+  fonte: Italgiure
+  url: https://www.italgiure.giustizia.it/sncass/
+  esterno: true
