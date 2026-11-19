@@ -4,7 +4,8 @@ classe: testo-lungo
 title: Curriculum vitae et studiorum
 sopratitolo: Avv. Gioacchino Alessandro Silvestro
 permalink: /chi-siamo/curriculum-vitae-et-studiorum/
-sfondo: /assets/img/sfondi/tribunale-3.jpg
+sfondo: /assets/img/sfondi/palazzo-di-giustizia-napoli-2015.jpg
+sfondo_posizione: center 30%
 description: Abilitato al patrocinio innanzi alla Corte di Cassazione e alle altre Giurisdizioni Superiori dal 2014, è iscritto all’Albo degli Avvocati presso il Tribunale di Napoli dal maggio 2000.
 ---
 
