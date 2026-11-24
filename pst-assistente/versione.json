@@ -1,0 +1,10 @@
+{
+  "versione": "0.7.0",
+  "script": [
+    { "id": "barra", "file": "barra.js", "matches": ["https://servizipst.giustizia.it/PST/*", "https://pst.giustizia.it/PST/*"], "runAt": "document_idle" },
+    { "id": "scheletro", "file": "scheletro.js", "matches": ["https://servizipst.giustizia.it/PST/*", "https://pst.giustizia.it/PST/*"], "runAt": "document_idle" },
+    { "id": "cassazione", "file": "cassazione.js", "matches": ["https://servizipst.giustizia.it/PST/it/pst_2_9*"], "runAt": "document_idle" },
+    { "id": "rete", "file": "rete.js", "matches": ["https://servizipst.giustizia.it/PST/PAVVP/*"], "runAt": "document_start" },
+    { "id": "pdp", "file": "pdp.js", "matches": ["https://servizipst.giustizia.it/PST/PAVVP/*"], "runAt": "document_start" }
+  ]
+}
