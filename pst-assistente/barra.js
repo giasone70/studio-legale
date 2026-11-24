@@ -8,10 +8,11 @@
     del: k => { try { sessionStorage.removeItem(k); } catch (e) {} }
   };
 
-  async function vaiCassazione() {
-    let url = null;
-    try { url = JSON.parse(localStorage.getItem('pstExt_cassUrl')); } catch (e) {}
-    location.href = url || (BASE + 'it/pst_2_9.wp');
+  // la scelta di ufficio, registro e ruolo si rifà a ogni accesso: la esegue lo script nella pagina di scelta
+  function vaiCassazione() {
+    ss.set('pstCassAuto', '1');
+    ss.del('pstCassPassi');
+    location.href = BASE + 'it/pst_2_9.wp';
   }
 
   // Il PDP è un’applicazione a pagina unica: si entra dalla home e poi si usa il suo menu.

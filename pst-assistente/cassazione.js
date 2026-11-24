@@ -30,29 +30,37 @@
   }
 
   // ---------- pagina di scelta ufficio / registro / ruolo ----------
+  // Ripete i clic dell’utente passo per passo, come fa il portale: ufficio, registro, ruolo.
+  const click = nome => { const e = document.querySelector('input[name="' + nome + '"]'); if (e) e.click(); return !!e; };
+  const scegli = (s, testo) => {
+    const o = [...s.options].find(x => x.textContent.trim() === testo);
+    if (!o) return false;
+    s.value = o.value;
+    return true;
+  };
+  function automatico() {
+    const n = Number(ss.get('pstCassPassi') || 0) + 1;
+    ss.set('pstCassPassi', String(n));
+    if (n > 6) { ss.del('pstCassAuto'); return; }
+    const uff = document.getElementById('ufficioRicerca'), reg = document.getElementById('registroRicerca'), ruo = document.getElementById('ruoloRicerca');
+    if (!uff || !reg || !ruo) { ss.del('pstCassAuto'); return; }
+    const testo = s => (s.selectedIndex > 0 ? s.options[s.selectedIndex].textContent.trim() : '');
+    if (testo(uff) !== 'Corte Suprema di Cassazione') { if (scegli(uff, 'Corte Suprema di Cassazione') && click('action:aggiorna')) return; ss.del('pstCassAuto'); return; }
+    if (testo(reg) !== 'Cassazione Penale') { if (scegli(reg, 'Cassazione Penale') && click('action:scegliRegistroInit')) return; ss.del('pstCassAuto'); return; }
+    scegli(ruo, 'Avvocato');
+    if (!click('action:scegliRegistro')) ss.del('pstCassAuto');
+  }
   async function paginaScelta() {
-    if (await leggi('cassUrl')) {
-      const url = await leggi('cassUrl');
-      const b = document.createElement('button');
-      b.type = 'button';
-      b.textContent = 'Vai direttamente ai ricorsi (Cassazione penale, avvocato)';
-      b.style.cssText = 'margin:8px 0;padding:4px 10px;cursor:pointer';
-      b.addEventListener('click', () => { location.href = url; });
-      const h = document.querySelector('.colUni h2');
-      if (h) h.parentNode.insertBefore(b, h.nextSibling);
-      return;
-    }
-    const nota = document.createElement('p');
-    nota.textContent = 'PST assistente: scegli una volta ufficio, registro e ruolo e apri la scheda “Ricorsi”. ' +
-      'Da quel momento il pulsante “Cassazione penale: ricorsi” porterà direttamente all’elenco.';
-    nota.style.cssText = 'margin:8px 0;padding:6px;background:#fff6d6;border:1px solid #d9c36b;font:13px sans-serif';
-    const h = document.querySelector('.colUni h2');
-    if (h) h.parentNode.insertBefore(nota, h.nextSibling);
+    if (ss.get('pstCassAuto') === '1') automatico();
   }
 
   // ---------- scheda Notifiche: passa ai ricorsi ----------
   async function paginaNotifiche() {
-    await impara();
+    if (ss.get('pstCassAuto') !== '1') { await impara(); return; }
+    ss.del('pstCassAuto'); ss.del('pstCassPassi');
+    const ok = h => ['ufficioRicerca', 'registroRicerca', 'ruoloRicerca'].every(n => new RegExp('[?&]' + n + '=[^&]+').test(h));
+    const a = [...document.querySelectorAll('a[href*="pst_2_9_1_2.wp?"]')].find(x => ok(x.href));
+    if (a) location.href = a.href;
   }
 
   // ---------- scheda Ricorsi ----------

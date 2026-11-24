@@ -14,14 +14,20 @@
   const SS = arch(sessionStorage);   // elenco dei procedimenti: scompare alla chiusura della scheda
 
   let pannello = null, aperto = false;
+  // l’elenco sta anche in memoria: il portale potrebbe svuotare sessionStorage
+  const MEM = window.__pstPdpMem = window.__pstPdpMem || { el: null };
+  const D = { xhr: 0, lista: 0, risposte: 0, elementi: 0, errore: '' };
+  const leggiElenco = () => MEM.el || SS.get('pstPdpElenco');
+  const scriviElenco = el => { MEM.el = el; SS.set('pstPdpElenco', el); };
 
   // ---------- raccolta dei dati ----------
   function memorizza(items, sostituisci) {
-    const el = SS.get('pstPdpElenco') || { items: {} };
-    if (sostituisci) el.items = {};
+    const el = leggiElenco() || { items: {} };
+    if (sostituisci && items.length) el.items = {};
     for (const it of items) if (it && it.identificativo) el.items[it.identificativo] = it;
     el.aggiornato = new Date().toISOString();
-    SS.set('pstPdpElenco', el);
+    scriviElenco(el);
+    D.elementi = Object.keys(el.items).length;
     if (aperto) disegna();
   }
   function salvaModello(req) {
@@ -67,7 +73,7 @@
   function apprendi(metodo, u, corpo, risposta) {
     const nomi = trovaNomi(risposta, [], '');
     if (!nomi.length) return;
-    const el = SS.get('pstPdpElenco');
+    const el = leggiElenco();
     if (!el) return;
     const x = new URL(u, location.href);
     let url = x.pathname + x.search;
@@ -96,9 +102,11 @@
   XMLHttpRequest.prototype.open = function (m, u) { this.__pm = String(m); this.__pu = String(u); return open0.apply(this, arguments); };
   XMLHttpRequest.prototype.send = function (b) {
     const x = this;
+    D.xhr++;
     const perc = percorso(x.__pu || '');
     const lista = /^post$/i.test(x.__pm || '') && perc.endsWith('/_ws/api/fascicoli/autorizzati');
     const altra = !lista && !x.__proprio && perc.indexOf('/_ws/api/') >= 0 && !/\/(codificati|system)\//.test(perc);
+    if (lista) D.lista++;
     if (lista || altra) {
       let req = null;
       try { req = JSON.parse(b); } catch (e) {}
@@ -108,10 +116,11 @@
           const r = x.responseType === 'json' ? x.response : JSON.parse(x.responseText);
           if (altra) { apprendi(x.__pm, x.__pu, typeof b === 'string' ? b : null, r); return; }
           const items = r && r.result && r.result.items;
-          if (!Array.isArray(items)) return;
+          if (!Array.isArray(items)) { D.errore = 'risposta senza elenco'; return; }
+          D.risposte++;
           if (req && req.paging && !x.__proprio) salvaModello(req);
           memorizza(items, !!x.__sostituisci);
-        } catch (e) {}
+        } catch (e) { D.errore = String(e && e.message || e); }
       });
     }
     return send0.apply(this, arguments);
@@ -213,7 +222,7 @@
 
   function disegna() {
     if (!pannello) return;
-    const el = SS.get('pstPdpElenco');
+    const el = leggiElenco();
     const nomiTutti = SS.get('pstPdpNomi') || {};
     const tutte = el ? Object.values(el.items).map(i => riga(i, nomiTutti)) : [];
     const q = (pannello.querySelector('[data-q]').value || '').trim().toLowerCase();
@@ -226,6 +235,7 @@
     v.sort((a, b) => { const x = col[2](a), y = col[2](b); return (x < y ? -1 : x > y ? 1 : 0) * ord.d; });
     pannello.querySelector('[data-c]').textContent = v.length + ' di ' + tutte.length + ' procedimenti' +
       (el && el.aggiornato ? ' · dati del ' + new Date(el.aggiornato).toLocaleString('it-IT') : '');
+    pannello.querySelector('[data-d]').textContent = 'Diagnostica · chiamate viste: ' + D.xhr + ' · elenchi intercettati: ' + D.lista + ' · risposte lette: ' + D.risposte + ' · procedimenti in memoria: ' + D.elementi + (D.errore ? ' · errore: ' + D.errore : '') + ' · richiesta salvata: ' + (LS.get('pstPdpModelli') ? 'sì' : 'no');
     const t = pannello.querySelector('table');
     t.innerHTML = '';
     const th = t.createTHead().insertRow();
@@ -314,7 +324,7 @@
     aperto = true;
     pannello.style.display = 'block';
     disegna();
-    const el = SS.get('pstPdpElenco');
+    const el = leggiElenco();
     if (!el || !Object.keys(el.items).length) aggiorna();
     pannello.querySelector('[data-q]').focus();
   }
@@ -335,7 +345,7 @@
       '<label><input data-n type="checkbox"> nascondi definiti e archiviati</label>' +
       '<button data-a>Aggiorna</button><button data-t>Carica tutti i nomi</button><button data-s>Esporta CSV</button><button data-v>Svuota copia locale</button>' +
       '<button data-x style="margin-left:auto">Chiudi</button></div>' +
-      '<div data-c style="margin-bottom:4px"></div><div data-m style="color:#a00;margin-bottom:4px"></div>' +
+      '<div data-c style="margin-bottom:4px"></div><div data-d style="color:#888;font-size:11px;margin-bottom:4px"></div><div data-m style="color:#a00;margin-bottom:4px"></div>' +
       '<table style="border-collapse:collapse;width:100%"></table>';
     document.body.appendChild(pannello);
     pannello.querySelector('[data-q]').value = SS.get('pstPdpFiltro') || '';
@@ -346,7 +356,7 @@
     pannello.querySelector('[data-s]').addEventListener('click', csv);
     pannello.querySelector('[data-t]').addEventListener('click', tutti);
     pannello.querySelector('[data-x]').addEventListener('click', chiudi);
-    pannello.querySelector('[data-v]').addEventListener('click', () => { SS.del('pstPdpElenco'); SS.del('pstPdpFiltro'); SS.del('pstPdpNomi'); disegna(); });
+    pannello.querySelector('[data-v]').addEventListener('click', () => { MEM.el = null; SS.del('pstPdpElenco'); SS.del('pstPdpFiltro'); SS.del('pstPdpNomi'); disegna(); });
     document.addEventListener('keydown', e => { if (e.key === 'Escape' && aperto) chiudi(); });
   }
   if (document.body) costruisci(); else document.addEventListener('DOMContentLoaded', costruisci);
