@@ -16,7 +16,7 @@
   let pannello = null, aperto = false;
   // l’elenco sta anche in memoria: il portale potrebbe svuotare sessionStorage
   const MEM = window.__pstPdpMem = window.__pstPdpMem || { el: null };
-  const D = { xhr: 0, lista: 0, risposte: 0, elementi: 0, errore: '' };
+  const D = { nomi: '', agg: '', xhr: 0, lista: 0, risposte: 0, elementi: 0, errore: '' };
   const leggiElenco = () => MEM.el || SS.get('pstPdpElenco');
   const scriviElenco = el => { MEM.el = el; SS.set('pstPdpElenco', el); };
 
@@ -90,9 +90,10 @@
     if (!id && !sogg) return;
     const sost = t => { let r = t; if (id) r = r.split(id).join('{id}'); if (sogg) r = r.split(sogg.val).join('{sid}'); return r; };
     url = sost(url);
+    const urlOrig = url;
     const i = url.indexOf('/_ws/api/');
     if (i > 0 && url.indexOf(PERC) === 0) url = PERC.slice(0, -1) + url.slice(i);
-    LS.set('pstPdpTemplNomi', { metodo, url, corpo: corpo ? sost(corpo) : null, usaSid: !!sogg, sidTipo: sogg ? sogg.tipo : null });
+    LS.set('pstPdpTemplNomi', { metodo, url, urlOrig, corpo: corpo ? sost(corpo) : null, usaSid: !!sogg, sidTipo: sogg ? sogg.tipo : null });
     const idF = id || (sogg && sogg.idFasc);
     if (idF) salvaNomi(idF, sogg ? sogg.val : '*', nomi);
     if (aperto) disegna();
@@ -170,8 +171,16 @@
     const t = LS.get('pstPdpTemplNomi');
     if (!t) { messaggio('Per vedere i nomi: chiudi questo elenco, nell’elenco originale clicca una volta sulle iniziali di un soggetto (la finestra che si apre) e poi torna qui. L’estensione impara da sola quale richiesta usare.'); return false; }
     const val = t.usaSid ? (t.sidTipo === 'idRegeWeb' ? String(sogg.rid) : sogg.sid) : '';
-    const r = await richiedi(t, id, val);
-    salvaNomi(id, t.usaSid ? val : '*', trovaNomi(r, [], ''));
+    let r;
+    try { r = await richiedi(t, id, val); }
+    catch (e) {
+      if (!t.urlOrig || t.urlOrig === t.url) { D.nomi = e.message; throw e; }
+      r = await richiedi(Object.assign({}, t, { url: t.urlOrig }), id, val);
+    }
+    const nomi = trovaNomi(r, [], '');
+    D.nomi = nomi.length ? 'ok' : 'risposta senza nomi';
+    if (!nomi.length) throw new Error('il portale non ha restituito nomi');
+    salvaNomi(id, t.usaSid ? val : '*', nomi);
     return true;
   }
 
@@ -187,15 +196,15 @@
       x.responseType = 'json';
       x.setRequestHeader('Content-Type', 'application/json');
       x.setRequestHeader('Accept', 'application/json, text/plain, */*');
-      x.onload = () => (x.status === 200 ? ok() : no(new Error('stato ' + x.status)));
-      x.onerror = () => no(new Error('errore di rete'));
+      x.onload = () => { D.agg = 'stato ' + x.status; diag(); return x.status === 200 ? ok() : no(new Error('stato ' + x.status)); };
+      x.onerror = () => { D.agg = 'errore di rete'; diag(); no(new Error('errore di rete')); };
       x.send(JSON.stringify(body));
     });
   }
   async function aggiorna() {
     const mod = LS.get('pstPdpModelli') || {};
     const chiavi = Object.keys(mod);
-    if (!chiavi.length) { messaggio('Apri una volta l’elenco dei procedimenti nell’applicazione: da quel momento l’estensione sa come richiederlo.'); return; }
+    if (!chiavi.length) { if (leggiElenco() && Object.keys(leggiElenco().items).length) return; messaggio('Apri una volta l’elenco dei procedimenti nell’applicazione: da quel momento l’estensione sa come richiederlo.'); return; }
     messaggio('Aggiornamento in corso…');
     try {
       for (let i = 0; i < chiavi.length; i++) await chiama(mod[chiavi[i]], i === 0);
@@ -251,7 +260,7 @@
   }
   function diag() {
     if (!pannello) return;
-    pannello.querySelector('[data-d]').textContent = 'Diagnostica · chiamate viste: ' + D.xhr + ' · elenchi intercettati: ' + D.lista + ' · risposte lette: ' + D.risposte + ' · procedimenti in memoria: ' + D.elementi + ' · ultima POST: ' + (D.post || '-') + (D.errore ? ' · errore: ' + D.errore : '') + ' · richiesta salvata: ' + (LS.get('pstPdpModelli') ? 'sì' : 'no');
+    pannello.querySelector('[data-d]').textContent = 'Diagnostica · chiamate viste: ' + D.xhr + ' · elenchi intercettati: ' + D.lista + ' · risposte lette: ' + D.risposte + ' · procedimenti in memoria: ' + D.elementi + ' · ultima POST: ' + (D.post || '-') + (D.errore ? ' · errore: ' + D.errore : '') + ' · richiesta salvata: ' + (LS.get('pstPdpModelli') ? 'sì' : 'no') + ' · aggiornamento: ' + (D.agg || '-') + ' · nomi: ' + (D.nomi || '-') + ' · richiesta nomi: ' + (() => { const t = LS.get('pstPdpTemplNomi'); return t ? t.metodo + ' ' + t.url : 'non appresa'; })();
   }
   function disegnaInt() {
     if (!pannello) return;
@@ -302,7 +311,7 @@
         if (r.nomiR['*']) { const d = document.createElement('div'); d.textContent = '→ ' + r.nomiR['*'].join(', '); td.appendChild(d); }
       }
       const az = tr.insertCell();
-      for (const [testo, p] of [['Stato', PERC + 'procedimenti-autorizzati/' + r.id + '/procedimento'], ['Depositi', PERC + 'depositi/' + r.id]]) {
+      for (const [testo, p] of [['Stato', PERC + 'procedimenti-autorizzati/' + r.id + '/procedimento-stato'], ['Depositi', PERC + 'depositi/' + r.id]]) {
         const b = document.createElement('button');
         b.textContent = testo;
         b.style.cssText = 'margin-right:4px;cursor:pointer';
@@ -358,7 +367,8 @@
     pannello.style.display = 'block';
     disegna();
     const el = leggiElenco();
-    if (!el || !Object.keys(el.items).length) aggiorna();
+    const vecchio = !el || !el.aggiornato || Date.now() - new Date(el.aggiornato).getTime() > 15 * 60 * 1000;
+    if (!el || !Object.keys(el.items).length || vecchio) aggiorna();
     pannello.querySelector('[data-q]').focus();
   }
 

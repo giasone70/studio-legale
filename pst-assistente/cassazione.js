@@ -47,18 +47,45 @@
     }
     b.textContent = 'PST assistente · ' + t;
   }
-  function automatico() {
+  const att = ms => new Promise(r => setTimeout(r, ms));
+  const trova = id => document.getElementById(id);
+  const finche = async (cond, ms) => { const t0 = Date.now(); while (Date.now() - t0 < ms) { if (cond()) return true; await att(150); } return false; };
+  const testoScelto = id => { const s = trova(id); return s && s.selectedIndex > 0 ? s.options[s.selectedIndex].textContent.trim() : ''; };
+  // si imposta il valore e si lancia l’evento “change”, come fa l’utente: la pagina esegue da sola il suo aggiornamento
+  const imposta = (id, testo) => {
+    const s = trova(id);
+    const o = s && [...s.options].find(x => x.textContent.trim() === testo);
+    if (!o) return false;
+    s.value = o.value;
+    s.dispatchEvent(new Event('input', { bubbles: true }));
+    s.dispatchEvent(new Event('change', { bubbles: true }));
+    return true;
+  };
+  async function automatico() {
     const n = Number(ss.get('pstCassPassi') || 0) + 1;
     ss.set('pstCassPassi', String(n));
-    if (n > 6) { ss.del('pstCassAuto'); banda('interrotto dopo 6 passaggi: completa a mano la scelta'); return; }
-    const uff = document.getElementById('ufficioRicerca'), reg = document.getElementById('registroRicerca'), ruo = document.getElementById('ruoloRicerca');
-    if (!uff || !reg || !ruo) { ss.del('pstCassAuto'); banda('campi di scelta non trovati'); return; }
-    const testo = s => (s.selectedIndex > 0 ? s.options[s.selectedIndex].textContent.trim() : '');
-    if (testo(uff) !== 'Corte Suprema di Cassazione') { banda('passo ' + n + ': scelgo l’ufficio'); if (scegli(uff, 'Corte Suprema di Cassazione') && click('action:aggiorna')) return; ss.del('pstCassAuto'); banda('ufficio o pulsante non trovato'); return; }
-    if (testo(reg) !== 'Cassazione Penale') { banda('passo ' + n + ': scelgo il registro'); if (scegli(reg, 'Cassazione Penale') && click('action:scegliRegistroInit')) return; ss.del('pstCassAuto'); banda('registro o pulsante non trovato'); return; }
-    banda('passo ' + n + ': scelgo il ruolo');
-    scegli(ruo, 'Avvocato');
-    if (!click('action:scegliRegistro')) { ss.del('pstCassAuto'); banda('pulsante di conferma non trovato'); }
+    const fine = t => { ss.del('pstCassAuto'); banda(t); };
+    if (n > 6) { fine('interrotto dopo 6 passaggi: completa a mano la scelta'); return; }
+    if (!(await finche(() => trova('ufficioRicerca') && trova('registroRicerca') && trova('ruoloRicerca'), 4000))) { fine('campi di scelta non trovati'); return; }
+    if (testoScelto('ufficioRicerca') !== 'Corte Suprema di Cassazione') {
+      banda('passo 1: scelgo l’ufficio');
+      if (!imposta('ufficioRicerca', 'Corte Suprema di Cassazione')) { fine('voce “Corte Suprema di Cassazione” non trovata'); return; }
+      await att(1800);
+    }
+    if (testoScelto('registroRicerca') !== 'Cassazione Penale') {
+      if (!(await finche(() => testoScelto('ufficioRicerca') === 'Corte Suprema di Cassazione' && trova('registroRicerca'), 6000))) { fine('l’ufficio non è stato accettato dalla pagina'); return; }
+      banda('passo 2: scelgo il registro');
+      if (!imposta('registroRicerca', 'Cassazione Penale')) { fine('voce “Cassazione Penale” non trovata'); return; }
+      await att(1800);
+    }
+    if (!(await finche(() => testoScelto('registroRicerca') === 'Cassazione Penale' && trova('ruoloRicerca'), 6000))) { fine('il registro non è stato accettato dalla pagina'); return; }
+    banda('passo 3: scelgo il ruolo');
+    if (!imposta('ruoloRicerca', 'Avvocato')) { fine('voce “Avvocato” non trovata'); return; }
+    await att(500);
+    const b = trova('submit') || document.querySelector('input[name="action:scegliRegistro"]');
+    if (!b) { fine('pulsante di conferma non trovato'); return; }
+    banda('passo 4: confermo');
+    b.click();
   }
   async function paginaScelta() {
     if (ss.get('pstCassAuto') === '1') automatico();
