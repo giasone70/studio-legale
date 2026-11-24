@@ -38,20 +38,31 @@
     s.value = o.value;
     return true;
   };
+  function banda(t) {
+    let b = document.getElementById('pstBanda');
+    if (!b) {
+      b = document.createElement('div'); b.id = 'pstBanda';
+      b.style.cssText = 'position:fixed;left:8px;top:8px;z-index:2147483646;background:#fff6d6;border:1px solid #d9c36b;padding:4px 8px;font:12px sans-serif;max-width:60%';
+      document.body.appendChild(b);
+    }
+    b.textContent = 'PST assistente · ' + t;
+  }
   function automatico() {
     const n = Number(ss.get('pstCassPassi') || 0) + 1;
     ss.set('pstCassPassi', String(n));
-    if (n > 6) { ss.del('pstCassAuto'); return; }
+    if (n > 6) { ss.del('pstCassAuto'); banda('interrotto dopo 6 passaggi: completa a mano la scelta'); return; }
     const uff = document.getElementById('ufficioRicerca'), reg = document.getElementById('registroRicerca'), ruo = document.getElementById('ruoloRicerca');
-    if (!uff || !reg || !ruo) { ss.del('pstCassAuto'); return; }
+    if (!uff || !reg || !ruo) { ss.del('pstCassAuto'); banda('campi di scelta non trovati'); return; }
     const testo = s => (s.selectedIndex > 0 ? s.options[s.selectedIndex].textContent.trim() : '');
-    if (testo(uff) !== 'Corte Suprema di Cassazione') { if (scegli(uff, 'Corte Suprema di Cassazione') && click('action:aggiorna')) return; ss.del('pstCassAuto'); return; }
-    if (testo(reg) !== 'Cassazione Penale') { if (scegli(reg, 'Cassazione Penale') && click('action:scegliRegistroInit')) return; ss.del('pstCassAuto'); return; }
+    if (testo(uff) !== 'Corte Suprema di Cassazione') { banda('passo ' + n + ': scelgo l’ufficio'); if (scegli(uff, 'Corte Suprema di Cassazione') && click('action:aggiorna')) return; ss.del('pstCassAuto'); banda('ufficio o pulsante non trovato'); return; }
+    if (testo(reg) !== 'Cassazione Penale') { banda('passo ' + n + ': scelgo il registro'); if (scegli(reg, 'Cassazione Penale') && click('action:scegliRegistroInit')) return; ss.del('pstCassAuto'); banda('registro o pulsante non trovato'); return; }
+    banda('passo ' + n + ': scelgo il ruolo');
     scegli(ruo, 'Avvocato');
-    if (!click('action:scegliRegistro')) ss.del('pstCassAuto');
+    if (!click('action:scegliRegistro')) { ss.del('pstCassAuto'); banda('pulsante di conferma non trovato'); }
   }
   async function paginaScelta() {
     if (ss.get('pstCassAuto') === '1') automatico();
+    else banda('scelta automatica non attiva: usa il pulsante “Cassazione penale: ricorsi” della barra');
   }
 
   // ---------- scheda Notifiche: passa ai ricorsi ----------
@@ -60,7 +71,8 @@
     ss.del('pstCassAuto'); ss.del('pstCassPassi');
     const ok = h => ['ufficioRicerca', 'registroRicerca', 'ruoloRicerca'].every(n => new RegExp('[?&]' + n + '=[^&]+').test(h));
     const a = [...document.querySelectorAll('a[href*="pst_2_9_1_2.wp?"]')].find(x => ok(x.href));
-    if (a) location.href = a.href;
+    if (a) { location.href = a.href; return; }
+    banda('link “Ricorsi” non trovato in questa pagina');
   }
 
   // ---------- scheda Ricorsi ----------

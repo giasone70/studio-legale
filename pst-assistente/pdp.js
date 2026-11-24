@@ -106,13 +106,17 @@
     const perc = percorso(x.__pu || '');
     const lista = /^post$/i.test(x.__pm || '') && perc.endsWith('/_ws/api/fascicoli/autorizzati');
     const altra = !lista && !x.__proprio && perc.indexOf('/_ws/api/') >= 0 && !/\/(codificati|system)\//.test(perc);
+    if (/^post$/i.test(x.__pm || '')) D.post = perc.split('/').slice(-3).join('/');
     if (lista) D.lista++;
     if (lista || altra) {
       let req = null;
       try { req = JSON.parse(b); } catch (e) {}
-      x.addEventListener('load', () => {
+      let letto = false;
+      const leggi = () => {
         try {
+          if (letto || x.readyState !== 4) return;
           if (x.status !== 200) return;
+          letto = true;
           const r = x.responseType === 'json' ? x.response : JSON.parse(x.responseText);
           if (altra) { apprendi(x.__pm, x.__pu, typeof b === 'string' ? b : null, r); return; }
           const items = r && r.result && r.result.items;
@@ -121,10 +125,32 @@
           if (req && req.paging && !x.__proprio) salvaModello(req);
           memorizza(items, !!x.__sostituisci);
         } catch (e) { D.errore = String(e && e.message || e); }
-      });
+      };
+      x.addEventListener('load', leggi);
+      x.addEventListener('loadend', leggi);
+      x.addEventListener('readystatechange', leggi);
     }
     return send0.apply(this, arguments);
   };
+
+  const fetch0 = window.fetch;
+  if (fetch0) {
+    window.fetch = function (i, o) {
+      const p = fetch0.apply(this, arguments);
+      try {
+        const url = typeof i === 'string' ? i : (i && i.url) || '';
+        const metodo = (o && o.method) || (i && i.method) || 'GET';
+        if (/^post$/i.test(metodo) && percorso(url).endsWith('/_ws/api/fascicoli/autorizzati')) {
+          D.lista++;
+          p.then(r => r.clone().json().then(j => {
+            const items = j && j.result && j.result.items;
+            if (Array.isArray(items)) { D.risposte++; memorizza(items, false); }
+          })).catch(() => {});
+        }
+      } catch (e) {}
+      return p;
+    };
+  }
 
   function richiedi(t, id, sid) {
     const sost = s => s.split('{id}').join(id).split('{sid}').join(sid || '');
@@ -221,6 +247,13 @@
   }
 
   function disegna() {
+    try { disegnaInt(); } catch (e) { D.errore = 'disegno: ' + (e && e.message || e); diag(); }
+  }
+  function diag() {
+    if (!pannello) return;
+    pannello.querySelector('[data-d]').textContent = 'Diagnostica · chiamate viste: ' + D.xhr + ' · elenchi intercettati: ' + D.lista + ' · risposte lette: ' + D.risposte + ' · procedimenti in memoria: ' + D.elementi + ' · ultima POST: ' + (D.post || '-') + (D.errore ? ' · errore: ' + D.errore : '') + ' · richiesta salvata: ' + (LS.get('pstPdpModelli') ? 'sì' : 'no');
+  }
+  function disegnaInt() {
     if (!pannello) return;
     const el = leggiElenco();
     const nomiTutti = SS.get('pstPdpNomi') || {};
@@ -235,7 +268,7 @@
     v.sort((a, b) => { const x = col[2](a), y = col[2](b); return (x < y ? -1 : x > y ? 1 : 0) * ord.d; });
     pannello.querySelector('[data-c]').textContent = v.length + ' di ' + tutte.length + ' procedimenti' +
       (el && el.aggiornato ? ' · dati del ' + new Date(el.aggiornato).toLocaleString('it-IT') : '');
-    pannello.querySelector('[data-d]').textContent = 'Diagnostica · chiamate viste: ' + D.xhr + ' · elenchi intercettati: ' + D.lista + ' · risposte lette: ' + D.risposte + ' · procedimenti in memoria: ' + D.elementi + (D.errore ? ' · errore: ' + D.errore : '') + ' · richiesta salvata: ' + (LS.get('pstPdpModelli') ? 'sì' : 'no');
+    diag();
     const t = pannello.querySelector('table');
     t.innerHTML = '';
     const th = t.createTHead().insertRow();
