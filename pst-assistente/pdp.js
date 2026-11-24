@@ -30,7 +30,20 @@
     D.elementi = Object.keys(el.items).length;
     if (aperto) disegna();
   }
-  function salvaModello(req) {
+  // intestazioni: si copiano quelle che l’applicazione ha davvero usato (il portale rifiuta con 405 le richieste diverse)
+  const SALTA = /^(cookie|authorization|content-length|host|origin|referer|user-agent|connection)$/i;
+  const esadecimale = n => { let r = ''; while (r.length < n) r += Math.floor(Math.random() * 16).toString(16); return r; };
+  const filtra = h => { const o = {}; for (const k of Object.keys(h || {})) if (!SALTA.test(k)) o[k] = h[k]; return o; };
+  function applica(x, h, conCorpo) {
+    const base = Object.assign({ 'Accept': 'application/json, text/plain, */*', 'Cache-Control': 'no-cache', 'traceparent': '00-' + esadecimale(32) + '-' + esadecimale(16) + '-01' }, conCorpo ? { 'Content-Type': 'application/json' } : {});
+    const tutte = Object.assign(base, h || {});
+    for (const k of Object.keys(tutte)) {
+      let v = tutte[k];
+      if (/^traceparent$/i.test(k)) v = (/^(\w\w)-/.exec(String(v)) || [0, '00'])[1] + '-' + esadecimale(32) + '-' + esadecimale(16) + '-' + (/-(\w\w)$/.exec(String(v)) || [0, '01'])[1];
+      try { x.setRequestHeader(k, v); } catch (e) {}
+    }
+  }
+  function salvaModello(req, intest) {
     const f = req.filter || {};
     const pulito = JSON.parse(JSON.stringify(req));
     pulito.filter = {};
@@ -38,7 +51,7 @@
     const tipo = String(f.autorizzatiType && f.autorizzatiType.autorizzatiTypeEnumValue);
     const mod = LS.get('pstPdpModelli') || {};
     const pagina = Number(req.paging && req.paging.page) || 0;
-    mod[tipo] = { body: pulito, minPage: mod[tipo] ? Math.min(mod[tipo].minPage, pagina) : pagina };
+    mod[tipo] = { body: pulito, intest: filtra(intest), minPage: mod[tipo] ? Math.min(mod[tipo].minPage, pagina) : pagina };
     LS.set('pstPdpModelli', mod);
   }
 
@@ -70,7 +83,7 @@
     NOMI.set('pstPdpNomi', n);
   }
   // quando l’utente apre nell’applicazione la finestra delle iniziali, si impara quale chiamata restituisce i nomi
-  function apprendi(metodo, u, corpo, risposta) {
+  function apprendi(metodo, u, corpo, risposta, intest) {
     const nomi = trovaNomi(risposta, [], '');
     if (!nomi.length) return;
     const el = leggiElenco();
@@ -93,14 +106,16 @@
     const urlOrig = url;
     const i = url.indexOf('/_ws/api/');
     if (i > 0 && url.indexOf(PERC) === 0) url = PERC.slice(0, -1) + url.slice(i);
-    LS.set('pstPdpTemplNomi', { metodo, url, urlOrig, corpo: corpo ? sost(corpo) : null, usaSid: !!sogg, sidTipo: sogg ? sogg.tipo : null });
+    LS.set('pstPdpTemplNomi', { metodo, url, urlOrig, intest: filtra(intest), corpo: corpo ? sost(corpo) : null, usaSid: !!sogg, sidTipo: sogg ? sogg.tipo : null });
     const idF = id || (sogg && sogg.idFasc);
     if (idF) salvaNomi(idF, sogg ? sogg.val : '*', nomi);
     if (aperto) disegna();
   }
 
   const open0 = XMLHttpRequest.prototype.open, send0 = XMLHttpRequest.prototype.send;
-  XMLHttpRequest.prototype.open = function (m, u) { this.__pm = String(m); this.__pu = String(u); return open0.apply(this, arguments); };
+  const head0 = XMLHttpRequest.prototype.setRequestHeader;
+  XMLHttpRequest.prototype.setRequestHeader = function (n, v) { try { (this.__hd = this.__hd || {})[n] = v; } catch (e) {} return head0.apply(this, arguments); };
+  XMLHttpRequest.prototype.open = function (m, u) { this.__pm = String(m); this.__pu = String(u); this.__hd = {}; return open0.apply(this, arguments); };
   XMLHttpRequest.prototype.send = function (b) {
     const x = this;
     D.xhr++;
@@ -119,11 +134,11 @@
           if (x.status !== 200) return;
           letto = true;
           const r = x.responseType === 'json' ? x.response : JSON.parse(x.responseText);
-          if (altra) { apprendi(x.__pm, x.__pu, typeof b === 'string' ? b : null, r); return; }
+          if (altra) { apprendi(x.__pm, x.__pu, typeof b === 'string' ? b : null, r, x.__hd); return; }
           const items = r && r.result && r.result.items;
           if (!Array.isArray(items)) { D.errore = 'risposta senza elenco'; return; }
           D.risposte++;
-          if (req && req.paging && !x.__proprio) salvaModello(req);
+          if (req && req.paging && !x.__proprio) salvaModello(req, x.__hd);
           memorizza(items, !!x.__sostituisci);
         } catch (e) { D.errore = String(e && e.message || e); }
       };
@@ -160,8 +175,7 @@
       x.__proprio = true;
       x.open(t.metodo, sost(t.url));
       x.responseType = 'json';
-      x.setRequestHeader('Accept', 'application/json, text/plain, */*');
-      if (t.corpo != null) x.setRequestHeader('Content-Type', 'application/json');
+      applica(x, t.intest, t.corpo != null);
       x.onload = () => (x.status === 200 ? ok(x.response) : no(new Error('stato ' + x.status)));
       x.onerror = () => no(new Error('errore di rete'));
       x.send(t.corpo == null ? null : sost(t.corpo));
@@ -194,8 +208,7 @@
       x.__proprio = true;
       x.__sostituisci = sostituisci;
       x.responseType = 'json';
-      x.setRequestHeader('Content-Type', 'application/json');
-      x.setRequestHeader('Accept', 'application/json, text/plain, */*');
+      applica(x, m.intest, true);
       x.onload = () => { D.agg = 'stato ' + x.status; diag(); return x.status === 200 ? ok() : no(new Error('stato ' + x.status)); };
       x.onerror = () => { D.agg = 'errore di rete'; diag(); no(new Error('errore di rete')); };
       x.send(JSON.stringify(body));
