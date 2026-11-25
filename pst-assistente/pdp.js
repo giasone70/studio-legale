@@ -381,33 +381,52 @@
     pannello.__righe = v;
   }
 
-  async function un(id, sg) {
-    messaggio('Carico il nome…');
-    try { if (await caricaNomi(id, sg)) { messaggio(''); disegna(); } }
-    catch (e) { messaggio('Nome non disponibile (' + e.message + ').'); }
-  }
+  async function un() { return tutti(); }
   let inCorso = false;
+  // i nomi si leggono facendo cliccare le iniziali nell’elenco originale: la richiesta la fa l’applicazione (il portale rifiuta le richieste proprie)
   async function tutti() {
     if (inCorso) { inCorso = false; return; }
-    if (!LS.get('pstPdpTemplNomi')) { messaggio('Per vedere i nomi: chiudi questo elenco, nell’elenco originale clicca una volta sulle iniziali di un soggetto (la finestra che si apre) e poi torna qui. L’estensione impara da sola quale richiesta usare.'); return; }
-    const nomiTutti = SS.get('pstPdpNomi') || {};
-    const lavoro = [];
-    for (const r of (pannello.__righe || [])) for (const sg of r.sogg) if (!r.nomiDi(sg).length) lavoro.push([r.id, sg]);
+    const SEL_RIGHE = 'app-procedimenti-view tbody.ui-table-tbody > tr.ui-selectable-row';
+    if (!document.querySelector(SEL_RIGHE)) { messaggio('L’elenco originale non è presente in questa pagina: apri “Procedimenti autorizzati” e riprova.'); return; }
+    const mancanti = (pannello.__righe || []).some(r => r.sogg.some(sg => !r.nomiDi(sg).length));
+    if ((pannello.__righe || []).length && !mancanti) { messaggio('Tutti i nomi sono già in memoria.'); return; }
     inCorso = true;
     const bt = pannello.querySelector('[data-t]'); bt.textContent = 'Interrompi';
-    let fatti = 0, errori = 0;
-    const visti = new Set();
-    for (const [id, sg] of lavoro) {
-      if (!inCorso) break;
-      const t = LS.get('pstPdpTemplNomi');
-      if (!t.usaSid) { if (visti.has(id)) continue; visti.add(id); }
-      try { await caricaNomi(id, sg); fatti++; } catch (e) { errori++; }
-      messaggio('Nomi caricati: ' + fatti + ' di ' + lavoro.length + (errori ? ' (errori: ' + errori + ')' : ''));
-      if (fatti % 5 === 0) disegna();
-      await new Promise(ok => setTimeout(ok, 150));
-    }
+    const attendi = ms => new Promise(ok => setTimeout(ok, ms));
+    const finche = async (f, max, passo) => { const t0 = Date.now(); while (Date.now() - t0 < (max || 4000)) { try { const v = f(); if (v) return v; } catch (e) {} await attendi(passo || 100); } return null; };
+    const firma = () => Array.from(document.querySelectorAll(SEL_RIGHE)).map(r => r.textContent).join('|');
+    const dlgAperto = () => document.querySelector('.ui-dialog #cognome_controlId, .ui-dialog #denominazione_controlId');
+    let letti = 0, errori = 0, pagina = 1;
+    try {
+      const primo = document.querySelector('p-paginator .ui-paginator-first');
+      if (primo && !primo.classList.contains('ui-state-disabled')) { const f0 = firma(); primo.click(); await finche(() => firma() !== f0, 4000); await attendi(300); }
+      while (inCorso) {
+        const righe = Array.from(document.querySelectorAll(SEL_RIGHE));
+        for (const r of righe) {
+          if (!inCorso) break;
+          for (const a of Array.from(r.querySelectorAll('app-soggetti-iniziali a.cursor-pointer'))) {
+            if (!inCorso) break;
+            a.click();
+            const ok = await finche(() => { const i = dlgAperto(); return i && (i.value || document.querySelector('.ui-dialog #nome_controlId, .ui-dialog #denominazione_controlId')) ? i : null; }, 6000);
+            await attendi(250);
+            if (ok) letti++; else errori++;
+            const chiudi = Array.from(document.querySelectorAll('.ui-dialog button')).find(x => (x.textContent || '').trim() === 'Chiudi');
+            if (chiudi) chiudi.click();
+            await finche(() => !dlgAperto(), 3000);
+            await attendi(120);
+            messaggio('Nomi letti: ' + letti + ' (pagina ' + pagina + ')' + (errori ? ' · errori: ' + errori : ''));
+          }
+        }
+        disegna();
+        const next = document.querySelector('p-paginator .ui-paginator-next');
+        if (!inCorso || !next || next.classList.contains('ui-state-disabled')) break;
+        const f1 = firma(); next.click();
+        if (!(await finche(() => firma() !== f1, 6000))) break;
+        await attendi(300); pagina++;
+      }
+    } catch (e) { messaggio('Interrotto: ' + e.message); inCorso = false; }
     inCorso = false; bt.textContent = 'Carica tutti i nomi';
-    messaggio(errori ? 'Completato con ' + errori + ' errori.' : '');
+    messaggio('Nomi letti: ' + letti + ' su ' + pagina + ' pagine' + (errori ? ' · errori: ' + errori : '') + '. I procedimenti archiviati si leggono dalla pagina “Procedimenti definiti”.');
     disegna();
   }
 
