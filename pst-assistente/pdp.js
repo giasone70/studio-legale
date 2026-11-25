@@ -43,7 +43,7 @@
       try { x.setRequestHeader(k, v); } catch (e) {}
     }
   }
-  function salvaModello(req, intest) {
+  function salvaModello(req, intest, u) {
     const f = req.filter || {};
     const pulito = JSON.parse(JSON.stringify(req));
     pulito.filter = {};
@@ -51,7 +51,8 @@
     const tipo = String(f.autorizzatiType && f.autorizzatiType.autorizzatiTypeEnumValue);
     const mod = LS.get('pstPdpModelli') || {};
     const pagina = Number(req.paging && req.paging.page) || 0;
-    mod[tipo] = { body: pulito, intest: filtra(intest), minPage: mod[tipo] ? Math.min(mod[tipo].minPage, pagina) : pagina };
+    let url = null; try { const q = new URL(u, location.href); url = q.pathname + q.search; } catch (e) {}
+    mod[tipo] = { url, ps: Number(req.paging && req.paging.pageSize) || 0, body: pulito, intest: filtra(intest), minPage: mod[tipo] ? Math.min(mod[tipo].minPage, pagina) : pagina };
     LS.set('pstPdpModelli', mod);
   }
 
@@ -138,7 +139,7 @@
           const items = r && r.result && r.result.items;
           if (!Array.isArray(items)) { D.errore = 'risposta senza elenco'; return; }
           D.risposte++;
-          if (req && req.paging && !x.__proprio) salvaModello(req, x.__hd);
+          if (req && req.paging && !x.__proprio) salvaModello(req, x.__hd, x.__pu);
           memorizza(items, !!x.__sostituisci);
         } catch (e) { D.errore = String(e && e.message || e); }
       };
@@ -186,10 +187,11 @@
     if (!t) { messaggio('Per vedere i nomi: chiudi questo elenco, nell’elenco originale clicca una volta sulle iniziali di un soggetto (la finestra che si apre) e poi torna qui. L’estensione impara da sola quale richiesta usare.'); return false; }
     const val = t.usaSid ? (t.sidTipo === 'idRegeWeb' ? String(sogg.rid) : sogg.sid) : '';
     let r;
-    try { r = await richiedi(t, id, val); }
+    const reale = Object.assign({}, t, { url: t.urlOrig || t.url });
+    try { r = await richiedi(reale, id, val); }
     catch (e) {
-      if (!t.urlOrig || t.urlOrig === t.url) { D.nomi = e.message; throw e; }
-      r = await richiedi(Object.assign({}, t, { url: t.urlOrig }), id, val);
+      if (!t.urlOrig || t.urlOrig === t.url) { D.nomi = e.message + ' ' + reale.url.split('/').slice(-3).join('/'); throw e; }
+      try { r = await richiedi(t, id, val); } catch (e2) { D.nomi = e2.message + ' ' + t.url.split('/').slice(-3).join('/'); throw e2; }
     }
     const nomi = trovaNomi(r, [], '');
     D.nomi = nomi.length ? 'ok' : 'risposta senza nomi';
@@ -199,20 +201,28 @@
   }
 
   function chiama(m, sostituisci) {
-    return new Promise((ok, no) => {
+    const prova = (url, ps) => new Promise((ok, no) => {
       const body = JSON.parse(JSON.stringify(m.body));
       body.paging.page = m.minPage;
-      body.paging.pageSize = 500;
+      if (ps) body.paging.pageSize = ps;
       const x = new XMLHttpRequest();
-      x.open('POST', API);
+      x.open('POST', url);
       x.__proprio = true;
       x.__sostituisci = sostituisci;
-      x.responseType = 'json';
       applica(x, m.intest, true);
-      x.onload = () => { D.agg = 'stato ' + x.status; diag(); return x.status === 200 ? ok() : no(new Error('stato ' + x.status)); };
+      x.onload = () => { D.agg = 'stato ' + x.status + ' ' + url.split('/').slice(-4).join('/') + ' ps' + ps; diag(); return x.status === 200 ? ok() : no(new Error('stato ' + x.status)); };
       x.onerror = () => { D.agg = 'errore di rete'; diag(); no(new Error('errore di rete')); };
       x.send(JSON.stringify(body));
     });
+    const urls = [m.url, API].filter((u, i, a) => u && a.indexOf(u) === i);
+    const dim = [m.ps || 0, 500, 100, 50].filter((p, i, a) => a.indexOf(p) === i);
+    return (async () => {
+      let ult;
+      for (const u of urls) for (const p of dim) {
+        try { return await prova(u, p); } catch (e) { ult = e; if (!/stato (405|400|404|413|422)/.test(e.message)) throw e; }
+      }
+      throw ult;
+    })();
   }
   async function aggiorna() {
     const mod = LS.get('pstPdpModelli') || {};
