@@ -40,6 +40,27 @@
     ['Cassazione penale: ricorsi', vaiCassazione],
     ['PDP: procedimenti', () => vaiPdp('/consultazioni/procedimenti-autorizzati')],
     ['PDP: depositi', () => vaiPdp('/consultazioni/depositi')],
+    ['Salva struttura pagina', () => {
+      const c = document.body.cloneNode(true);
+      c.querySelectorAll('script,style,svg,noscript,link').forEach(e => e.remove());
+      const w = document.createTreeWalker(c, NodeFilter.SHOW_TEXT);
+      const nodi = []; while (w.nextNode()) nodi.push(w.currentNode);
+      for (const n of nodi) { const t = n.nodeValue.trim(); if (!t) continue; n.nodeValue = '[' + t.length + ' car.]'; }
+      for (const e of c.querySelectorAll('*')) {
+        for (const a of Array.from(e.attributes)) {
+          let v = a.value;
+          if (a.name === 'class' || a.name === 'role' || a.name === 'type' || a.name === 'tabindex') continue;
+          v = v.replace(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi, '{uuid}');
+          if (/^(title|aria-label|placeholder|alt|value|data-.*)$/.test(a.name) && !/^[a-z-]{1,25}$/.test(v)) v = '[' + v.length + ' car.]';
+          e.setAttribute(a.name, v.slice(0, 120));
+        }
+      }
+      const out = JSON.stringify({ pagina: location.pathname.replace(/[0-9a-f]{8}-[0-9a-f-]{27}/gi, '{uuid}'), html: c.innerHTML.slice(0, 600000) });
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(new Blob([out], { type: 'application/json' }));
+      a.download = 'struttura_' + Date.now() + '.json';
+      a.click();
+    }],
     ['Registra rete PDP: ' + (registra ? 'sì' : 'no'), () => {
       try { localStorage.setItem('pstRete', registra ? '0' : '1'); } catch (e) {}
       location.reload();
