@@ -16,7 +16,7 @@
   let pannello = null, aperto = false;
   // l’elenco sta anche in memoria: il portale potrebbe svuotare sessionStorage
   const MEM = window.__pstPdpMem = window.__pstPdpMem || { el: null };
-  const D = { nomi: '', agg: '', xhr: 0, lista: 0, risposte: 0, elementi: 0, errore: '' };
+  const D = { nomi: '', agg: '', xhr: 0, lista: 0, risposte: 0, elementi: 0, errore: '', det: '' };
   const leggiElenco = () => MEM.el || SS.get('pstPdpElenco');
   const scriviElenco = el => { MEM.el = el; SS.set('pstPdpElenco', el); };
 
@@ -175,9 +175,14 @@
       const x = new XMLHttpRequest();
       x.__proprio = true;
       x.open(t.metodo, sost(t.url));
-      x.responseType = 'json';
       applica(x, t.intest, t.corpo != null);
-      x.onload = () => (x.status === 200 ? ok(x.response) : no(new Error('stato ' + x.status)));
+      x.onload = () => {
+        const tx = x.responseText || '';
+        D.det = 'nomi ' + x.status + ' ' + (x.getResponseHeader('Content-Type') || '?') + ' ' + tx.length + ' car. “' + tx.slice(0, 80).replace(/\s+/g, ' ') + '”';
+        if (x.status !== 200) return no(new Error('stato ' + x.status));
+        let j = null; try { j = JSON.parse(tx); } catch (e) {}
+        ok(j);
+      };
       x.onerror = () => no(new Error('errore di rete'));
       x.send(t.corpo == null ? null : sost(t.corpo));
     });
@@ -188,11 +193,15 @@
     const val = t.usaSid ? (t.sidTipo === 'idRegeWeb' ? String(sogg.rid) : sogg.sid) : '';
     let r;
     const reale = Object.assign({}, t, { url: t.urlOrig || t.url });
-    try { r = await richiedi(reale, id, val); }
-    catch (e) {
-      if (!t.urlOrig || t.urlOrig === t.url) { D.nomi = e.message + ' ' + reale.url.split('/').slice(-3).join('/'); throw e; }
-      try { r = await richiedi(t, id, val); } catch (e2) { D.nomi = e2.message + ' ' + t.url.split('/').slice(-3).join('/'); throw e2; }
+    const varianti = [reale];
+    if (t.url !== reale.url) varianti.push(t);
+    let nomiTrovati = [], ultimo = null;
+    for (const v of varianti) {
+      try { r = await richiedi(v, id, val); nomiTrovati = trovaNomi(r, [], ''); if (nomiTrovati.length) break; ultimo = new Error('risposta senza nomi'); }
+      catch (e) { ultimo = e; }
     }
+    if (!nomiTrovati.length) { D.nomi = ultimo.message; throw ultimo; }
+    r = r || {};
     const nomi = trovaNomi(r, [], '');
     D.nomi = nomi.length ? 'ok' : 'risposta senza nomi';
     if (!nomi.length) throw new Error('il portale non ha restituito nomi');
@@ -210,7 +219,7 @@
       x.__proprio = true;
       x.__sostituisci = sostituisci;
       applica(x, m.intest, true);
-      x.onload = () => { D.agg = 'stato ' + x.status + ' ' + url.split('/').slice(-4).join('/') + ' ps' + ps; diag(); return x.status === 200 ? ok() : no(new Error('stato ' + x.status)); };
+      x.onload = () => { D.agg = 'stato ' + x.status + ' ' + url.split('/').slice(-4).join('/') + ' ps' + ps; if (x.status !== 200) D.det = 'elenco ' + x.status + ' Allow=' + (x.getResponseHeader('Allow') || '-') + ' ' + (x.getResponseHeader('Content-Type') || '?') + ' “' + (x.responseText || '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 160) + '”'; diag(); return x.status === 200 ? ok() : no(new Error('stato ' + x.status)); };
       x.onerror = () => { D.agg = 'errore di rete'; diag(); no(new Error('errore di rete')); };
       x.send(JSON.stringify(body));
     });
@@ -234,6 +243,7 @@
       messaggio('');
     } catch (e) {
       messaggio('Aggiornamento non riuscito (' + e.message + '). Apri l’elenco nell’applicazione: l’estensione lo salva da sola.');
+      try { const u = Number(sessionStorage.getItem('pstPdpRicarica') || 0); if (Date.now() - u > 120000) { sessionStorage.setItem('pstPdpRicarica', String(Date.now())); messaggio('Aggiornamento diretto rifiutato dal portale: ricarico la pagina per far rileggere l’elenco all’applicazione…'); setTimeout(() => location.reload(), 1200); } } catch (e2) {}
     }
   }
 
@@ -283,7 +293,7 @@
   }
   function diag() {
     if (!pannello) return;
-    pannello.querySelector('[data-d]').textContent = 'Diagnostica · chiamate viste: ' + D.xhr + ' · elenchi intercettati: ' + D.lista + ' · risposte lette: ' + D.risposte + ' · procedimenti in memoria: ' + D.elementi + ' · ultima POST: ' + (D.post || '-') + (D.errore ? ' · errore: ' + D.errore : '') + ' · richiesta salvata: ' + (LS.get('pstPdpModelli') ? 'sì' : 'no') + ' · aggiornamento: ' + (D.agg || '-') + ' · nomi: ' + (D.nomi || '-') + ' · richiesta nomi: ' + (() => { const t = LS.get('pstPdpTemplNomi'); return t ? t.metodo + ' ' + t.url : 'non appresa'; })();
+    pannello.querySelector('[data-d]').textContent = 'Diagnostica · chiamate viste: ' + D.xhr + ' · elenchi intercettati: ' + D.lista + ' · risposte lette: ' + D.risposte + ' · procedimenti in memoria: ' + D.elementi + ' · ultima POST: ' + (D.post || '-') + (D.errore ? ' · errore: ' + D.errore : '') + ' · richiesta salvata: ' + (LS.get('pstPdpModelli') ? 'sì' : 'no') + ' · aggiornamento: ' + (D.agg || '-') + ' · nomi: ' + (D.nomi || '-') + (D.det ? ' · dettaglio: ' + D.det : '') + ' · richiesta nomi: ' + (() => { const t = LS.get('pstPdpTemplNomi'); return t ? t.metodo + ' ' + t.url : 'non appresa'; })();
   }
   function disegnaInt() {
     if (!pannello) return;
