@@ -521,6 +521,16 @@
         await attendi(250);
         if (!voci.some(v => !v.fatto) && Date.now() - voci.ultima > 1500 && Date.now() - t0 > 2000) break;
       }
+      // i depositi sono a pagine da dieci: si scorre il paginatore dell’applicazione fino all’ultima
+      for (let n = 0; n < 80 && sez === 'depositi'; n++) {
+        const next = document.querySelector('p-paginator .ui-paginator-next');
+        if (!next || next.classList.contains('ui-state-disabled')) break;
+        const k = voci.length; next.click();
+        messaggio('Lettura dei depositi: pagina ' + (n + 2) + '…');
+        const t1 = Date.now();
+        while (Date.now() - t1 < 8000) { await attendi(200); if (voci.length > k && voci.every(v => v.fatto)) break; }
+        await attendi(300);
+      }
     } catch (e) { messaggio('Lettura non riuscita: ' + e.message); }
     MEM.cat = null;
     try { history.back(); } catch (e) {}
@@ -550,6 +560,55 @@
 
   function pulsante(testo, f, css) { const b = h('button', css || BTN, testo); b.addEventListener('click', f); return b; }
 
+  const vociDi = (id, sez) => ((MEM.sez[id] || {})[sez] || {}).voci || [];
+  function depositiDi(id) {
+    const m = {};
+    for (const v of vociDi(id, 'depositi')) if (/elenco-depositi$/.test(v.u)) for (const x of (v.risp && v.risp.result && v.risp.result.items) || []) m[x.identificativo] = x;
+    return Object.values(m).sort((a, b) => String(b.dataInvio).localeCompare(String(a.dataInvio)));
+  }
+  function udienzeDi(id) {
+    for (const v of vociDi(id, 'stato')) if (/\/stato$/.test(v.u)) { const it = v.risp && v.risp.result && v.risp.result.item; return (it && it.udienze) || []; }
+    return null;
+  }
+  function tabellaDati(colonne, righe, perRiga) {
+    const t = h('table', 'border-collapse:collapse;width:100%;font-size:13px');
+    const hr = t.createTHead().insertRow();
+    for (const c of colonne) hr.appendChild(h('th', 'text-align:left;border-bottom:2px solid #99a;padding:5px 8px;color:#445;background:#f4f5fa', c));
+    const tb = t.createTBody();
+    for (const x of righe) perRiga(tb, x);
+    return t;
+  }
+  function renderUdienze(ud) {
+    if (!ud.length) return h('div', 'color:#667;padding:8px 0', 'Nessuna udienza fissata.');
+    const oggi = new Date().toISOString().slice(0, 10);
+    const v = ud.slice().sort((a, b) => String(a.data).localeCompare(String(b.data)));
+    return tabellaDati(['Data', 'Aula', 'Ufficio', 'Sezione', 'Causale'], v, (tb, u) => {
+      const tr = tb.insertRow(); tr.style.borderBottom = '1px solid #e3e3ea';
+      const futura = String(u.data).slice(0, 10) >= oggi;
+      if (futura) tr.style.background = '#f1f7ee';
+      [fmtDT(u.data) + (futura ? '  · in programma' : ''), u.aula, [u.descrizioneTipoUfficioAmbito, u.descrizioneCircondario].filter(Boolean).join(' · '), u.descrizioneSezione, u.descrizioneCausale].forEach((t, i) => {
+        const td = tr.insertCell(); td.style.padding = '5px 8px'; td.textContent = t || ''; if (i === 0 && futura) td.style.fontWeight = '600';
+      });
+    });
+  }
+  function renderDepositi(dep) {
+    const w = h('div');
+    if (!dep.length) { w.appendChild(h('div', 'color:#667;padding:8px 0', 'Nessun deposito.')); return w; }
+    w.appendChild(h('div', 'color:#556;margin-bottom:6px', dep.length + ' depositi · dal più recente · clic su una riga per tutti i dati'));
+    w.appendChild(tabellaDati(['Prog.', 'Inviato', 'Arrivato', 'Stato', 'Tipo di atto', 'Atti contestuali', 'Registro', 'Annotazione'], dep, (tb, d) => {
+      const tr = tb.insertRow(); tr.style.cssText = 'border-bottom:1px solid #e3e3ea;cursor:pointer';
+      const reg = d.registro ? (d.registro.codiceTipoRegistro || '') + ' ' + d.registro.numero + '/' + d.registro.anno : '';
+      [d.progressivo, fmtDT(d.dataInvio), fmtDT(d.dataArrivo), d.descrizioneStatoPratica, d.descrizioneTipoAtto, d.totaleAttiContestuali, reg, d.annotazione].forEach(t => { const td = tr.insertCell(); td.style.padding = '5px 8px'; td.textContent = t == null ? '' : String(t); });
+      let det = null;
+      tr.addEventListener('click', () => {
+        if (det) { det.remove(); det = null; return; }
+        det = tb.insertRow(tr.rowIndex - tb.rows[0].rowIndex + 1);
+        const c = det.insertCell(); c.colSpan = 8; c.style.cssText = 'padding:8px 14px;background:#fafbfe'; c.appendChild(albero(d));
+      });
+    }));
+    return w;
+  }
+
   function contenutoSezione(sez, it, r, dettagli) {
     const id = it.identificativo;
     const w = h('div');
@@ -559,8 +618,9 @@
       const tile = (t, sotto, s) => { const b = h('button', 'text-align:left;padding:10px 14px;border:1px solid #b9c0d4;border-radius:8px;background:#f7f8fc;cursor:pointer;min-width:170px;font:inherit'); b.appendChild(h('div', 'font-weight:600', t)); b.appendChild(h('div', 'color:#667;font-size:12px;margin-top:2px', sotto)); b.addEventListener('click', () => vaiSezione(s)); return b; };
       tiles.appendChild(tile('Soggetti', r.sogg.length + ' · nomi letti ' + nl + '/' + r.sogg.length, 'soggetti'));
       tiles.appendChild(tile('Iscrizioni', (it.iscrizioniRegistro || []).length + ' registri', 'iscrizioni'));
-      tiles.appendChild(tile('Stato', it.abilitaVisulizzazioneStato === false ? 'non abilitato dal portale' : ((MEM.sez[id] || {}).stato ? 'già letto' : 'da leggere'), 'stato'));
-      tiles.appendChild(tile('Depositi', (MEM.sez[id] || {}).depositi ? 'già letti' : 'da leggere', 'depositi'));
+      const ud = udienzeDi(id), dp = (MEM.sez[id] || {}).depositi ? depositiDi(id) : null;
+      tiles.appendChild(tile('Stato e udienze', it.abilitaVisulizzazioneStato === false ? 'non abilitato dal portale' : (ud ? ud.length + ' udienze' : 'da leggere'), 'stato'));
+      tiles.appendChild(tile('Depositi', dp ? dp.length + ' depositi' : 'da leggere', 'depositi'));
       tiles.appendChild(tile('Dati completi', 'ogni campo restituito dal portale', 'completi'));
       w.appendChild(tiles);
       const url = it.urlDisponibilitaAtti ? (() => { const a = h('a', 'color:#14c', it.urlDisponibilitaAtti); a.href = it.urlDisponibilitaAtti; a.target = '_blank'; a.rel = 'noopener'; return a; })() : null;
@@ -617,7 +677,20 @@
       if (c) barra.appendChild(h('span', 'color:#778;font-size:12px', 'Letto il ' + new Date(c.ora).toLocaleString('it-IT') + ' · ' + c.voci.length + ' chiamate'));
       w.appendChild(barra);
       if (c && !c.voci.length) w.appendChild(h('div', 'color:#a60', 'Nessuna risposta ricevuta dal portale per questa sezione.'));
-      if (c) for (const v of c.voci) {
+      if (c && c.voci.length) {
+        const ud = sez === 'stato' ? udienzeDi(id) : null;
+        if (sez === 'stato') { w.appendChild(h('div', 'font-weight:600;margin:6px 0', 'Udienze')); w.appendChild(ud ? renderUdienze(ud) : h('div', 'color:#667', 'Il portale non ha restituito l’elenco delle udienze.')); }
+        if (sez === 'depositi') w.appendChild(renderDepositi(depositiDi(id)));
+        const dt = h('details', 'margin-top:16px'); dt.appendChild(h('summary', 'cursor:pointer;color:#445', 'Risposte complete del portale (' + c.voci.length + ' chiamate)'));
+        w.appendChild(dt);
+        for (const v of c.voci) {
+          dt.appendChild(h('div', 'color:#889;font-size:11px;margin-top:12px', v.m + ' …' + v.u.split('/').slice(-4).join('/') + ' · stato ' + v.stato));
+          const b = h('div', 'border:1px solid #d5d9e6;border-radius:8px;padding:8px 14px;margin-top:2px');
+          b.appendChild(albero(corpoDi(v.risp)));
+          dt.appendChild(b);
+        }
+      }
+      if (false) for (const v of c.voci) {
         w.appendChild(h('div', 'color:#889;font-size:11px;margin-top:12px', v.m + ' …' + v.u.split('/').slice(-4).join('/') + ' · stato ' + v.stato));
         const b = h('div', 'border:1px solid #d5d9e6;border-radius:8px;padding:8px 14px;margin-top:2px');
         b.appendChild(albero(corpoDi(v.risp)));
