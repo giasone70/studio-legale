@@ -521,6 +521,20 @@
         await attendi(250);
         if (!voci.some(v => !v.fatto) && Date.now() - voci.ultima > 1500 && Date.now() - t0 > 2000) break;
       }
+      // nello Stato si preme anche “Storico Udienze”, come farebbe l’utente, e se ne raccolgono le risposte
+      if (sez === 'stato') {
+        const bt = Array.from(document.querySelectorAll('button')).find(x => /storico\s+udienze/i.test(x.textContent || '') && !pannello.contains(x));
+        if (bt) {
+          const k = voci.length, p0 = location.pathname; bt.click();
+          const t2 = Date.now(); voci.ultima = t2;
+          while (Date.now() - t2 < 8000) { await attendi(250); if (voci.length > k && !voci.some(v => !v.fatto) && Date.now() - voci.ultima > 1200) break; }
+          const dlg = document.querySelector('.ui-dialog');
+          const ch = dlg && Array.from(dlg.querySelectorAll('button')).find(x => (x.textContent || '').trim() === 'Chiudi');
+          if (ch) ch.click(); else if (dlg && dlg.querySelector('.ui-dialog-titlebar-close')) dlg.querySelector('.ui-dialog-titlebar-close').click();
+          if (location.pathname !== p0) { history.back(); await attendi(600); }
+          D.storico = 'pulsante premuto, ' + (voci.length - k) + ' chiamate';
+        } else D.storico = 'pulsante non trovato';
+      }
       // i depositi sono a pagine da dieci: si scorre il paginatore dell’applicazione fino all’ultima
       for (let n = 0; n < 80 && sez === 'depositi'; n++) {
         const next = document.querySelector('p-paginator .ui-paginator-next');
@@ -569,9 +583,18 @@
   }
   // il portale restituisce solo le udienze correnti: quelle già viste si conservano nel browser, così lo storico cresce a ogni lettura
   const chiaveUd = u => (u.idRegeWeb || '') + '|' + u.data;
+  // cerca in qualsiasi risposta gli elenchi di udienze (oggetti con data e causale o aula)
+  function cercaUdienze(v, out) {
+    if (Array.isArray(v)) { if (v.some(e => e && typeof e === 'object' && e.data && ('descrizioneCausale' in e || 'aula' in e))) v.forEach(e => { if (e && e.data) out.push(e); }); else v.forEach(e => cercaUdienze(e, out)); }
+    else if (v && typeof v === 'object') Object.keys(v).forEach(k => cercaUdienze(v[k], out));
+    return out;
+  }
+  function udienzeLette(id) {
+    const v = vociDi(id, 'stato');
+    return v.length ? cercaUdienze(v.map(x => x.risp), []) : null;
+  }
   function udienzeDi(id) {
-    let corr = null;
-    for (const v of vociDi(id, 'stato')) if (/\/stato$/.test(v.u)) { const it = v.risp && v.risp.result && v.risp.result.item; corr = (it && it.udienze) || []; }
+    const corr = udienzeLette(id);
     const mem = (LS.get('pstPdpUdienze') || {})[id] || {};
     if (corr === null && !Object.keys(mem).length) return null;
     const attuali = {}; (corr || []).forEach(u => { attuali[chiaveUd(u)] = u; });
@@ -579,8 +602,7 @@
     return Object.keys(tutte).map(k => Object.assign({}, tutte[k], { _solo: !attuali[k] }));
   }
   function ricordaUdienze(id) {
-    let corr = null;
-    for (const v of vociDi(id, 'stato')) if (/\/stato$/.test(v.u)) { const it = v.risp && v.risp.result && v.risp.result.item; corr = (it && it.udienze) || []; }
+    const corr = udienzeLette(id);
     if (!corr || !corr.length) return;
     const st = LS.get('pstPdpUdienze') || {}; const m = st[id] || {};
     corr.forEach(u => { m[chiaveUd(u)] = u; });
@@ -602,7 +624,7 @@
       const tr = tb.insertRow(); tr.style.borderBottom = '1px solid #e3e3ea';
       const futura = String(u.data).slice(0, 10) >= oggi;
       if (futura) tr.style.background = '#f1f7ee';
-      [fmtDT(u.data) + (futura ? '  · in programma' : u._solo ? '  · passata' : ''), u.aula, [u.descrizioneTipoUfficioAmbito, u.descrizioneCircondario].filter(Boolean).join(' · '), u.descrizioneSezione, u.descrizioneCausale].forEach((t, i) => {
+      [fmtDT(u.data) + (futura ? '  · in programma' : u._solo ? '  · dallo storico locale' : ''), u.aula, [u.descrizioneTipoUfficioAmbito, u.descrizioneCircondario].filter(Boolean).join(' · '), u.descrizioneSezione, u.descrizioneCausale].forEach((t, i) => {
         const td = tr.insertCell(); td.style.padding = '5px 8px'; td.textContent = t || ''; if (i === 0 && futura) td.style.fontWeight = '600';
       });
     });
@@ -690,13 +712,13 @@
       barra.appendChild(pulsante(c ? 'Rileggi' : 'Leggi dal portale', () => leggiSezione(id, sez)));
       barra.appendChild(pulsante('Apri nella pagina originale', () => vai(ROTTE[sez](id))));
       if (c && c.voci.length) barra.appendChild(pulsante('Salva struttura dati', () => salvaForma(sez, c)));
-      if (c) barra.appendChild(h('span', 'color:#778;font-size:12px', 'Letto il ' + new Date(c.ora).toLocaleString('it-IT') + ' · ' + c.voci.length + ' chiamate'));
+      if (c) barra.appendChild(h('span', 'color:#778;font-size:12px', 'Letto il ' + new Date(c.ora).toLocaleString('it-IT') + ' · ' + c.voci.length + ' chiamate' + (sez === 'stato' && D.storico ? ' · storico udienze: ' + D.storico : '')));
       w.appendChild(barra);
       if (c && !c.voci.length) w.appendChild(h('div', 'color:#a60', 'Nessuna risposta ricevuta dal portale per questa sezione.'));
       if (c && c.voci.length) {
         const ud = sez === 'stato' ? udienzeDi(id) : null;
         if (sez === 'stato') { w.appendChild(h('div', 'font-weight:600;margin:6px 0', 'Udienze'));
-          w.appendChild(h('div', 'color:#667;font-size:12px;margin-bottom:6px', 'Il portale restituisce solo le udienze fissate. Quelle già lette in precedenza restano in questo browser e compaiono anche dopo che il portale non le mostra più.')); w.appendChild(ud ? renderUdienze(ud) : h('div', 'color:#667', 'Il portale non ha restituito l’elenco delle udienze.')); }
+          w.appendChild(h('div', 'color:#667;font-size:12px;margin-bottom:6px', 'Udienze fissate e storico udienze del portale. Quelle già lette in precedenza restano anche in questo browser.')); w.appendChild(ud ? renderUdienze(ud) : h('div', 'color:#667', 'Il portale non ha restituito l’elenco delle udienze.')); }
         if (sez === 'depositi') w.appendChild(renderDepositi(depositiDi(id)));
         const dt = h('details', 'margin-top:16px'); dt.appendChild(h('summary', 'cursor:pointer;color:#445', 'Risposte complete del portale (' + c.voci.length + ' chiamate)'));
         w.appendChild(dt);
