@@ -57,6 +57,7 @@
       const x = new XMLHttpRequest();
       x.open(metodo, url);
       x.__proprio = true;
+      try { if (/^https?:/i.test(url) && new URL(url).origin !== location.origin) x.withCredentials = true; } catch (e) {}
       applica(x, h, corpo != null);
       x.onload = () => ok({ stato: x.status, testo: x.responseText || '', tipo: x.getResponseHeader('Content-Type') || '?', allow: x.getResponseHeader('Allow') || '-' });
       x.onerror = () => ok({ stato: 0, testo: '', tipo: '?', allow: '-' });
@@ -85,11 +86,12 @@
     const mod = LS.get('pstPdpModelli') || {};
     const pagina = Number(req.paging && req.paging.page) || 0;
     let url = null; try { const q = new URL(u, location.href); url = q.pathname + q.search; } catch (e) {}
-    mod[tipo] = { url, ps: Number(req.paging && req.paging.pageSize) || 0, body: pulito, intest: filtra(intest), minPage: mod[tipo] ? Math.min(mod[tipo].minPage, pagina) : pagina };
+    mod[tipo] = { url, orig: origineDi(u), ps: Number(req.paging && req.paging.pageSize) || 0, body: pulito, intest: filtra(intest), minPage: mod[tipo] ? Math.min(mod[tipo].minPage, pagina) : pagina };
     LS.set('pstPdpModelli', mod);
   }
 
   // l’applicazione usa indirizzi relativi (“_ws/api/...”): si confronta sempre il percorso risolto
+  const origineDi = u => { try { return new URL(u, document.baseURI).origin; } catch (e) { return ''; } };
   const percorso = u => { try { return new URL(u, location.href).pathname; } catch (e) { return String(u).split('?')[0]; } };
 
   // ---------- nomi e cognomi per esteso ----------
@@ -140,7 +142,7 @@
     const urlOrig = url;
     const i = url.indexOf('/_ws/api/');
     if (i > 0 && url.indexOf(PERC) === 0) url = PERC.slice(0, -1) + url.slice(i);
-    LS.set('pstPdpTemplNomi', { metodo, url, urlOrig, intest: filtra(intest), corpo: corpo ? sost(corpo) : null, usaSid: !!sogg, sidTipo: sogg ? sogg.tipo : null });
+    LS.set('pstPdpTemplNomi', { origine: origineDi(u), metodo, url, urlOrig, intest: filtra(intest), corpo: corpo ? sost(corpo) : null, usaSid: !!sogg, sidTipo: sogg ? sogg.tipo : null });
     const idF = id || (sogg && sogg.idFasc);
     if (idF) salvaNomi(idF, sogg ? sogg.val : '*', nomi);
     if (aperto) disegna();
@@ -156,6 +158,7 @@
     const perc = percorso(x.__pu || '');
     const lista = /^post$/i.test(x.__pm || '') && perc.endsWith('/_ws/api/fascicoli/autorizzati');
     const altra = !lista && !x.__proprio && perc.indexOf('/_ws/api/') >= 0 && !/\/(codificati|system)\//.test(perc);
+    if (perc.indexOf('/_ws/api/') >= 0 && !x.__proprio) D.host = origineDi(x.__pu) === location.origin ? 'stesso' : origineDi(x.__pu);
     if (/^post$/i.test(x.__pm || '')) D.post = perc.split('/').slice(-3).join('/');
     if (lista) D.lista++;
     if (lista || altra) {
@@ -204,7 +207,7 @@
 
   async function richiedi(t, id, sid) {
     const sost = q => q.split('{id}').join(id).split('{sid}').join(sid || '');
-    const r = await invia(t.metodo, sost(t.url), t.intest, t.corpo == null ? null : sost(t.corpo));
+    const r = await invia(t.metodo, (t.origine || '') + sost(t.url), t.intest, t.corpo == null ? null : sost(t.corpo));
     D.det = 'nomi ' + r.esiti + ' · ' + r.tipo + ' ' + r.testo.length + ' car. “' + r.testo.slice(0, 80).replace(/\s+/g, ' ') + '”' + (r.stato === 405 ? ' Allow=' + r.allow : '');
     if (r.stato !== 200) throw new Error('stato ' + r.stato);
     try { return JSON.parse(r.testo); } catch (e) { return null; }
@@ -246,7 +249,7 @@
       if (!Array.isArray(items)) throw new Error('risposta senza elenco');
       D.risposte++; memorizza(items, sostituisci);
     };
-    const urls = [m.url, API].filter((u, i, a) => u && a.indexOf(u) === i);
+    const urls = [m.url, API].filter((u, i, a) => u && a.indexOf(u) === i).map(u => (m.orig || '') + u);
     const dim = [m.ps || 0, 500].filter((p, i, a) => a.indexOf(p) === i);
     return (async () => {
       let ult;
@@ -316,7 +319,7 @@
   }
   function diag() {
     if (!pannello) return;
-    pannello.querySelector('[data-d]').textContent = 'Diagnostica · chiamate viste: ' + D.xhr + ' · elenchi intercettati: ' + D.lista + ' · risposte lette: ' + D.risposte + ' · procedimenti in memoria: ' + D.elementi + ' · ultima POST: ' + (D.post || '-') + (D.errore ? ' · errore: ' + D.errore : '') + ' · richiesta salvata: ' + (LS.get('pstPdpModelli') ? 'sì' : 'no') + ' · aggiornamento: ' + (D.agg || '-') + ' · nomi: ' + (D.nomi || '-') + (D.det ? ' · dettaglio: ' + D.det : '') + ' · richiesta nomi: ' + (() => { const t = LS.get('pstPdpTemplNomi'); return t ? t.metodo + ' ' + t.url : 'non appresa'; })();
+    pannello.querySelector('[data-d]').textContent = 'Diagnostica · chiamate viste: ' + D.xhr + ' · elenchi intercettati: ' + D.lista + ' · risposte lette: ' + D.risposte + ' · procedimenti in memoria: ' + D.elementi + ' · ultima POST: ' + (D.post || '-') + (D.errore ? ' · errore: ' + D.errore : '') + ' · richiesta salvata: ' + (LS.get('pstPdpModelli') ? 'sì' : 'no') + ' · aggiornamento: ' + (D.agg || '-') + ' · nomi: ' + (D.nomi || '-') + ' · indirizzo API: ' + (D.host || '-') + (D.det ? ' · dettaglio: ' + D.det : '') + ' · richiesta nomi: ' + (() => { const t = LS.get('pstPdpTemplNomi'); return t ? t.metodo + ' ' + t.url : 'non appresa'; })();
   }
   function disegnaInt() {
     if (!pannello) return;
