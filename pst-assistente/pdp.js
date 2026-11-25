@@ -538,6 +538,7 @@
     const utili = voci.filter(v => v.fatto).map(v => ({ m: v.m, u: v.u, req: v.req, risp: v.risp, stato: v.stato }));
     (MEM.sez[id] = MEM.sez[id] || {})[sez] = { ora: new Date().toISOString(), voci: utili };
     SS.set('pstPdpSez', MEM.sez);
+    if (sez === 'stato') ricordaUdienze(id);
     caricando = '';
     messaggio(utili.length ? '' : 'Il portale non ha restituito dati per questa sezione. Prova “Apri nella pagina originale”.');
     disegna();
@@ -566,9 +567,24 @@
     for (const v of vociDi(id, 'depositi')) if (/elenco-depositi$/.test(v.u)) for (const x of (v.risp && v.risp.result && v.risp.result.items) || []) m[x.identificativo] = x;
     return Object.values(m).sort((a, b) => String(b.dataInvio).localeCompare(String(a.dataInvio)));
   }
+  // il portale restituisce solo le udienze correnti: quelle già viste si conservano nel browser, così lo storico cresce a ogni lettura
+  const chiaveUd = u => (u.idRegeWeb || '') + '|' + u.data;
   function udienzeDi(id) {
-    for (const v of vociDi(id, 'stato')) if (/\/stato$/.test(v.u)) { const it = v.risp && v.risp.result && v.risp.result.item; return (it && it.udienze) || []; }
-    return null;
+    let corr = null;
+    for (const v of vociDi(id, 'stato')) if (/\/stato$/.test(v.u)) { const it = v.risp && v.risp.result && v.risp.result.item; corr = (it && it.udienze) || []; }
+    const mem = (LS.get('pstPdpUdienze') || {})[id] || {};
+    if (corr === null && !Object.keys(mem).length) return null;
+    const attuali = {}; (corr || []).forEach(u => { attuali[chiaveUd(u)] = u; });
+    const tutte = Object.assign({}, mem, attuali);
+    return Object.keys(tutte).map(k => Object.assign({}, tutte[k], { _solo: !attuali[k] }));
+  }
+  function ricordaUdienze(id) {
+    let corr = null;
+    for (const v of vociDi(id, 'stato')) if (/\/stato$/.test(v.u)) { const it = v.risp && v.risp.result && v.risp.result.item; corr = (it && it.udienze) || []; }
+    if (!corr || !corr.length) return;
+    const st = LS.get('pstPdpUdienze') || {}; const m = st[id] || {};
+    corr.forEach(u => { m[chiaveUd(u)] = u; });
+    st[id] = m; LS.set('pstPdpUdienze', st);
   }
   function tabellaDati(colonne, righe, perRiga) {
     const t = h('table', 'border-collapse:collapse;width:100%;font-size:13px');
@@ -581,12 +597,12 @@
   function renderUdienze(ud) {
     if (!ud.length) return h('div', 'color:#667;padding:8px 0', 'Nessuna udienza fissata.');
     const oggi = new Date().toISOString().slice(0, 10);
-    const v = ud.slice().sort((a, b) => String(a.data).localeCompare(String(b.data)));
+    const v = ud.slice().sort((a, b) => String(b.data).localeCompare(String(a.data)));
     return tabellaDati(['Data', 'Aula', 'Ufficio', 'Sezione', 'Causale'], v, (tb, u) => {
       const tr = tb.insertRow(); tr.style.borderBottom = '1px solid #e3e3ea';
       const futura = String(u.data).slice(0, 10) >= oggi;
       if (futura) tr.style.background = '#f1f7ee';
-      [fmtDT(u.data) + (futura ? '  · in programma' : ''), u.aula, [u.descrizioneTipoUfficioAmbito, u.descrizioneCircondario].filter(Boolean).join(' · '), u.descrizioneSezione, u.descrizioneCausale].forEach((t, i) => {
+      [fmtDT(u.data) + (futura ? '  · in programma' : u._solo ? '  · passata' : ''), u.aula, [u.descrizioneTipoUfficioAmbito, u.descrizioneCircondario].filter(Boolean).join(' · '), u.descrizioneSezione, u.descrizioneCausale].forEach((t, i) => {
         const td = tr.insertCell(); td.style.padding = '5px 8px'; td.textContent = t || ''; if (i === 0 && futura) td.style.fontWeight = '600';
       });
     });
@@ -679,7 +695,8 @@
       if (c && !c.voci.length) w.appendChild(h('div', 'color:#a60', 'Nessuna risposta ricevuta dal portale per questa sezione.'));
       if (c && c.voci.length) {
         const ud = sez === 'stato' ? udienzeDi(id) : null;
-        if (sez === 'stato') { w.appendChild(h('div', 'font-weight:600;margin:6px 0', 'Udienze')); w.appendChild(ud ? renderUdienze(ud) : h('div', 'color:#667', 'Il portale non ha restituito l’elenco delle udienze.')); }
+        if (sez === 'stato') { w.appendChild(h('div', 'font-weight:600;margin:6px 0', 'Udienze'));
+          w.appendChild(h('div', 'color:#667;font-size:12px;margin-bottom:6px', 'Il portale restituisce solo le udienze fissate. Quelle già lette in precedenza restano in questo browser e compaiono anche dopo che il portale non le mostra più.')); w.appendChild(ud ? renderUdienze(ud) : h('div', 'color:#667', 'Il portale non ha restituito l’elenco delle udienze.')); }
         if (sez === 'depositi') w.appendChild(renderDepositi(depositiDi(id)));
         const dt = h('details', 'margin-top:16px'); dt.appendChild(h('summary', 'cursor:pointer;color:#445', 'Risposte complete del portale (' + c.voci.length + ' chiamate)'));
         w.appendChild(dt);
