@@ -32,16 +32,49 @@
   }
   // intestazioni: si copiano quelle che l’applicazione ha davvero usato (il portale rifiuta con 405 le richieste diverse)
   const SALTA = /^(cookie|authorization|content-length|host|origin|referer|user-agent|connection)$/i;
+  const fetch0 = window.fetch;
   const esadecimale = n => { let r = ''; while (r.length < n) r += Math.floor(Math.random() * 16).toString(16); return r; };
   const filtra = h => { const o = {}; for (const k of Object.keys(h || {})) if (!SALTA.test(k)) o[k] = h[k]; return o; };
-  function applica(x, h, conCorpo) {
-    const base = Object.assign({ 'Accept': 'application/json, text/plain, */*', 'Cache-Control': 'no-cache', 'traceparent': '00-' + esadecimale(32) + '-' + esadecimale(16) + '-01' }, conCorpo ? { 'Content-Type': 'application/json' } : {});
-    const tutte = Object.assign(base, h || {});
-    for (const k of Object.keys(tutte)) {
-      let v = tutte[k];
+  function intestazioniOrdinate(h, conCorpo) {
+    const base = { 'Accept': 'application/json, text/plain, */*', 'Cache-Control': 'no-cache', 'traceparent': '00-' + esadecimale(32) + '-' + esadecimale(16) + '-01' };
+    if (conCorpo) base['Content-Type'] = 'application/json';
+    const out = [];
+    const visti = {};
+    for (const k of Object.keys(h || {})) { out.push([k, h[k]]); visti[k.toLowerCase()] = 1; }
+    for (const k of Object.keys(base)) if (!visti[k.toLowerCase()]) out.push([k, base[k]]);
+    return out.map(([k, v]) => {
       if (/^traceparent$/i.test(k)) v = (/^(\w\w)-/.exec(String(v)) || [0, '00'])[1] + '-' + esadecimale(32) + '-' + esadecimale(16) + '-' + (/-(\w\w)$/.exec(String(v)) || [0, '01'])[1];
-      try { x.setRequestHeader(k, v); } catch (e) {}
+      return [k, v];
+    });
+  }
+  function applica(x, h, conCorpo) {
+    for (const [k, v] of intestazioniOrdinate(h, conCorpo)) { try { x.setRequestHeader(k, v); } catch (e) {} }
+  }
+  // invio con più modalità: il portale rifiuta (405) le richieste proprie anche se identiche, si provano più strade
+  async function invia(metodo, url, h, corpo) {
+    const esiti = [];
+    const xhr = () => new Promise(ok => {
+      const x = new XMLHttpRequest();
+      x.open(metodo, url);
+      x.__proprio = true;
+      applica(x, h, corpo != null);
+      x.onload = () => ok({ stato: x.status, testo: x.responseText || '', tipo: x.getResponseHeader('Content-Type') || '?', allow: x.getResponseHeader('Allow') || '-' });
+      x.onerror = () => ok({ stato: 0, testo: '', tipo: '?', allow: '-' });
+      x.send(corpo == null ? null : corpo);
+    });
+    const fch = async () => {
+      const hd = {}; for (const [k, v] of intestazioniOrdinate(h, corpo != null)) hd[k] = v;
+      const r = await fetch0.call(window, url, { method: metodo, headers: hd, body: corpo == null ? undefined : corpo, credentials: 'include', cache: 'no-store' });
+      return { stato: r.status, testo: await r.text(), tipo: r.headers.get('Content-Type') || '?', allow: r.headers.get('Allow') || '-' };
+    };
+    let ult = null;
+    for (const [nome, f] of [['xhr', xhr], ['fetch', fch]]) {
+      try { ult = await f(); } catch (e) { ult = { stato: 0, testo: String(e && e.message || e), tipo: '?', allow: '-' }; }
+      esiti.push(nome + ' ' + ult.stato);
+      if (ult.stato === 200) break;
     }
+    ult.esiti = esiti.join(', ');
+    return ult;
   }
   function salvaModello(req, intest, u) {
     const f = req.filter || {};
@@ -150,9 +183,9 @@
     return send0.apply(this, arguments);
   };
 
-  const fetch0 = window.fetch;
   if (fetch0) {
     window.fetch = function (i, o) {
+      if (i && i.__proprio) return fetch0.apply(this, arguments);
       const p = fetch0.apply(this, arguments);
       try {
         const url = typeof i === 'string' ? i : (i && i.url) || '';
@@ -169,23 +202,12 @@
     };
   }
 
-  function richiedi(t, id, sid) {
-    const sost = s => s.split('{id}').join(id).split('{sid}').join(sid || '');
-    return new Promise((ok, no) => {
-      const x = new XMLHttpRequest();
-      x.__proprio = true;
-      x.open(t.metodo, sost(t.url));
-      applica(x, t.intest, t.corpo != null);
-      x.onload = () => {
-        const tx = x.responseText || '';
-        D.det = 'nomi ' + x.status + ' ' + (x.getResponseHeader('Content-Type') || '?') + ' ' + tx.length + ' car. “' + tx.slice(0, 80).replace(/\s+/g, ' ') + '”';
-        if (x.status !== 200) return no(new Error('stato ' + x.status));
-        let j = null; try { j = JSON.parse(tx); } catch (e) {}
-        ok(j);
-      };
-      x.onerror = () => no(new Error('errore di rete'));
-      x.send(t.corpo == null ? null : sost(t.corpo));
-    });
+  async function richiedi(t, id, sid) {
+    const sost = q => q.split('{id}').join(id).split('{sid}').join(sid || '');
+    const r = await invia(t.metodo, sost(t.url), t.intest, t.corpo == null ? null : sost(t.corpo));
+    D.det = 'nomi ' + r.esiti + ' · ' + r.tipo + ' ' + r.testo.length + ' car. “' + r.testo.slice(0, 80).replace(/\s+/g, ' ') + '”' + (r.stato === 405 ? ' Allow=' + r.allow : '');
+    if (r.stato !== 200) throw new Error('stato ' + r.stato);
+    try { return JSON.parse(r.testo); } catch (e) { return null; }
   }
   async function caricaNomi(id, sogg) {
     const t = LS.get('pstPdpTemplNomi');
@@ -210,21 +232,22 @@
   }
 
   function chiama(m, sostituisci) {
-    const prova = (url, ps) => new Promise((ok, no) => {
+    const prova = async (url, ps) => {
       const body = JSON.parse(JSON.stringify(m.body));
       body.paging.page = m.minPage;
       if (ps) body.paging.pageSize = ps;
-      const x = new XMLHttpRequest();
-      x.open('POST', url);
-      x.__proprio = true;
-      x.__sostituisci = sostituisci;
-      applica(x, m.intest, true);
-      x.onload = () => { D.agg = 'stato ' + x.status + ' ' + url.split('/').slice(-4).join('/') + ' ps' + ps; if (x.status !== 200) D.det = 'elenco ' + x.status + ' Allow=' + (x.getResponseHeader('Allow') || '-') + ' ' + (x.getResponseHeader('Content-Type') || '?') + ' “' + (x.responseText || '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 160) + '”'; diag(); return x.status === 200 ? ok() : no(new Error('stato ' + x.status)); };
-      x.onerror = () => { D.agg = 'errore di rete'; diag(); no(new Error('errore di rete')); };
-      x.send(JSON.stringify(body));
-    });
+      const r = await invia('POST', url, m.intest, JSON.stringify(body));
+      D.agg = 'stato ' + r.stato + ' ' + r.esiti + ' ps' + ps;
+      D.det = 'elenco ' + r.esiti + ' Allow=' + r.allow + ' ' + r.tipo + ' “' + r.testo.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 100) + '”';
+      diag();
+      if (r.stato !== 200) throw new Error('stato ' + r.stato);
+      const j = JSON.parse(r.testo);
+      const items = j && j.result && j.result.items;
+      if (!Array.isArray(items)) throw new Error('risposta senza elenco');
+      D.risposte++; memorizza(items, sostituisci);
+    };
     const urls = [m.url, API].filter((u, i, a) => u && a.indexOf(u) === i);
-    const dim = [m.ps || 0, 500, 100, 50].filter((p, i, a) => a.indexOf(p) === i);
+    const dim = [m.ps || 0, 500].filter((p, i, a) => a.indexOf(p) === i);
     return (async () => {
       let ult;
       for (const u of urls) for (const p of dim) {
