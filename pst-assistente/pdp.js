@@ -16,6 +16,9 @@
   let pannello = null, aperto = false;
   // l’elenco sta anche in memoria: il portale potrebbe svuotare sessionStorage
   const MEM = window.__pstPdpMem = window.__pstPdpMem || { el: null };
+  MEM.sez = MEM.sez || SS.get('pstPdpSez') || {};   // sezioni lette dal portale: { idProcedimento: { stato: {ora, voci}, depositi: {...} } }
+  let vista = SS.get('pstPdpVista') || { tipo: 'elenco' };
+  let caricando = '';
   const D = { nomi: '', agg: '', xhr: 0, lista: 0, risposte: 0, elementi: 0, errore: '', det: '' };
   const leggiElenco = () => MEM.el || SS.get('pstPdpElenco');
   const scriviElenco = el => { MEM.el = el; SS.set('pstPdpElenco', el); };
@@ -119,7 +122,13 @@
     NOMI.set('pstPdpNomi', n);
   }
   // quando l’utente apre nell’applicazione la finestra delle iniziali, si impara quale chiamata restituisce i nomi
+  function salvaSogg(id, chiave, item) {
+    const n = SS.get('pstPdpSogg') || {};
+    (n[id] = n[id] || {})[chiave] = item;
+    SS.set('pstPdpSogg', n);
+  }
   function apprendi(metodo, u, corpo, risposta, intest) {
+    if (!/soggetti\/nominativo/.test(u)) return;   // solo questa chiamata restituisce i nomi dei soggetti
     const nomi = trovaNomi(risposta, [], '');
     if (!nomi.length) return;
     const el = leggiElenco();
@@ -145,7 +154,9 @@
     LS.set('pstPdpTemplNomi', { origine: origineDi(u), metodo, url, urlOrig, intest: filtra(intest), corpo: corpo ? sost(corpo) : null, usaSid: !!sogg, sidTipo: sogg ? sogg.tipo : null });
     const idF = id || (sogg && sogg.idFasc);
     if (idF) salvaNomi(idF, sogg ? sogg.val : '*', nomi);
-    if (aperto) disegna();
+    const item = risposta && risposta.result && risposta.result.item;
+    if (idF && item && typeof item === 'object') salvaSogg(idF, sogg ? sogg.val : '*', item);
+    if (aperto && !caricando) disegna();
   }
 
   const open0 = XMLHttpRequest.prototype.open, send0 = XMLHttpRequest.prototype.send;
@@ -161,6 +172,19 @@
     if (perc.indexOf('/_ws/api/') >= 0 && !x.__proprio) D.host = origineDi(x.__pu) === location.origin ? 'stesso' : origineDi(x.__pu);
     if (/^post$/i.test(x.__pm || '')) D.post = perc.split('/').slice(-3).join('/');
     if (lista) D.lista++;
+    // durante la lettura di una sezione (Stato, Depositi) si conservano le risposte che l’applicazione riceve
+    const cat = MEM.cat;
+    if (cat && !lista && !x.__proprio && perc.indexOf('/_ws/api/') >= 0 && !/\/(codificati|system)\//.test(perc) && !/soggetti\/nominativo/.test(perc)) {
+      let rq = null; try { rq = JSON.parse(b); } catch (e) {}
+      const voce = { m: x.__pm, u: perc, req: rq, risp: null, stato: 0, fatto: false };
+      cat.push(voce); cat.ultima = Date.now();
+      const fine = () => {
+        if (x.readyState !== 4 || voce.fatto) return;
+        voce.fatto = true; voce.stato = x.status; cat.ultima = Date.now();
+        try { voce.risp = x.responseType === 'json' ? x.response : JSON.parse(x.responseText); } catch (e) { voce.risp = null; }
+      };
+      x.addEventListener('loadend', fine); x.addEventListener('readystatechange', fine);
+    }
     if (lista || altra) {
       let req = null;
       try { req = JSON.parse(b); } catch (e) {}
@@ -305,7 +329,7 @@
     ['nomina', 'Nomina', r => iso(r.nomina)], ['stato', 'Stato', r => r.stato.toLowerCase()], ['iter', 'Iter', r => r.iter.toLowerCase()]
   ];
 
-  function messaggio(t) { if (pannello) pannello.querySelector('[data-m]').textContent = t; }
+  function messaggio(t) { if (pannello) pannello.querySelectorAll('[data-m]').forEach(e => { e.textContent = t; }); }
 
   function vai(percorso) {
     chiudi();
@@ -315,7 +339,13 @@
   }
 
   function disegna() {
-    try { disegnaInt(); } catch (e) { D.errore = 'disegno: ' + (e && e.message || e); diag(); }
+    if (caricando) return;
+    try {
+      disegnaInt();
+      const lista = pannello && pannello.querySelector('[data-el]'), sc = pannello && pannello.querySelector('[data-sc]');
+      if (vista.tipo === 'scheda') disegnaScheda();
+      else if (lista) { lista.style.display = ''; sc.style.display = 'none'; }
+    } catch (e) { D.errore = 'disegno: ' + (e && e.message || e); diag(); }
   }
   function diag() {
     if (!pannello) return;
@@ -352,8 +382,16 @@
     for (const r of v) {
       const tr = tb.insertRow();
       tr.style.cssText = 'border-bottom:1px solid #ddd' + (r.chiusa ? ';color:#666' : '');
+      tr.addEventListener('dblclick', () => apriScheda(r.id, 'panoramica'));
       for (const c of COLONNE) {
         const td = tr.insertCell(); td.style.padding = '4px';
+        if (c[0] === 'registro') {
+          const a = document.createElement('a');
+          a.href = '#'; a.title = 'Apri la scheda del procedimento'; a.textContent = r.registro;
+          a.style.cssText = 'cursor:pointer;color:#14c;font-weight:600;text-decoration:none';
+          a.addEventListener('click', ev => { ev.preventDefault(); apriScheda(r.id, 'panoramica'); });
+          td.appendChild(a); continue;
+        }
         if (c[0] !== 'soggetti') { td.textContent = r[c[0]]; continue; }
         for (const sg of r.sogg) {
           const d = document.createElement('div');
@@ -370,15 +408,232 @@
         if (r.nomiR['*']) { const d = document.createElement('div'); d.textContent = '→ ' + r.nomiR['*'].join(', '); td.appendChild(d); }
       }
       const az = tr.insertCell();
-      for (const [testo, p] of [['Stato', PERC + 'procedimenti-autorizzati/' + r.id + '/procedimento-stato'], ['Depositi', PERC + 'depositi/' + r.id]]) {
+      for (const [testo, sez] of [['Scheda', 'panoramica'], ['Stato', 'stato'], ['Depositi', 'depositi']]) {
         const b = document.createElement('button');
         b.textContent = testo;
         b.style.cssText = 'margin-right:4px;cursor:pointer';
-        b.addEventListener('click', () => vai(p));
+        b.addEventListener('click', () => apriScheda(r.id, sez));
         az.appendChild(b);
       }
     }
     pannello.__righe = v;
+  }
+
+  // ---------- scheda del procedimento ----------
+  const SEZIONI = [['panoramica', 'Panoramica'], ['soggetti', 'Soggetti'], ['iscrizioni', 'Iscrizioni'], ['stato', 'Stato'], ['depositi', 'Depositi'], ['completi', 'Dati completi']];
+  const ROTTE = { stato: id => PERC + 'procedimenti-autorizzati/' + id + '/procedimento-stato', depositi: id => PERC + 'depositi/' + id };
+  const h = (tag, css, testo) => { const e = document.createElement(tag); if (css) e.style.cssText = css; if (testo != null) e.textContent = testo; return e; };
+  const BTN = 'padding:5px 12px;cursor:pointer;border:1px solid #9aa;background:#f4f5fa;border-radius:5px;font:inherit';
+  const fmtDT = d => { const m = /^(\d{4})-(\d{2})-(\d{2})(?:[T ](\d{2}):(\d{2}))?/.exec(d || ''); return m ? m[3] + '/' + m[2] + '/' + m[1] + (m[4] && (m[4] !== '00' || m[5] !== '00') ? ' ' + m[4] + ':' + m[5] : '') : (d || ''); };
+  const umano = k => { const s = String(k).replace(/([a-z0-9])([A-Z])/g, '$1 $2').replace(/_/g, ' ').toLowerCase(); return s.charAt(0).toUpperCase() + s.slice(1); };
+  const sn = b => (b == null ? null : b ? 'sì' : 'no');
+  const valore = v => typeof v === 'boolean' ? sn(v) : (typeof v === 'string' && /^\d{4}-\d{2}-\d{2}(T|$)/.test(v)) ? fmtDT(v) : String(v);
+  const vuoto = v => !(v instanceof Node) && (v == null || v === '' || (Array.isArray(v) && !v.length) || (typeof v === 'object' && !Array.isArray(v) && !Object.keys(v).length));
+  const corpoDi = r => (r && r.result ? (r.result.item !== undefined ? r.result.item : r.result.items !== undefined ? r.result.items : r.result) : r);
+
+  function coppie(lista) {
+    const dl = h('div', 'display:grid;grid-template-columns:minmax(150px,230px) 1fr;gap:3px 16px');
+    for (const [k, v] of lista) {
+      if (vuoto(v)) continue;
+      dl.appendChild(h('div', 'color:#667;padding:2px 0', k));
+      const c = h('div', 'padding:2px 0;word-break:break-word');
+      if (v instanceof Node) c.appendChild(v); else c.textContent = v;
+      dl.appendChild(c);
+    }
+    return dl;
+  }
+  function tabella(righe) {
+    const col = [];
+    for (const r of righe) for (const k of Object.keys(r)) if (!vuoto(r[k]) && col.indexOf(k) < 0) col.push(k);
+    const t = h('table', 'border-collapse:collapse;width:100%;font-size:12px');
+    const hr = t.createTHead().insertRow();
+    for (const k of col) hr.appendChild(h('th', 'text-align:left;border-bottom:2px solid #99a;padding:3px 6px;color:#445', umano(k)));
+    const tb = t.createTBody();
+    for (const r of righe) { const tr = tb.insertRow(); tr.style.borderBottom = '1px solid #e3e3ea'; for (const k of col) { const td = tr.insertCell(); td.style.padding = '3px 6px'; td.textContent = vuoto(r[k]) ? '' : valore(r[k]); } }
+    return t;
+  }
+  // visualizzazione generica di qualsiasi risposta del portale: nulla va perso, anche i campi che l’applicazione non mostra
+  function albero(v) {
+    if (vuoto(v)) return h('span', 'color:#999', '—');
+    if (Array.isArray(v)) {
+      if (v.every(x => x == null || typeof x !== 'object')) return h('span', null, v.map(valore).join(', '));
+      const ogg = v.every(x => x && typeof x === 'object' && !Array.isArray(x));
+      if (ogg && v.length > 1 && v.every(x => Object.values(x).every(y => y == null || typeof y !== 'object'))) return tabella(v);
+      const w = h('div');
+      v.forEach((x, i) => {
+        const b = h('div', 'border-left:3px solid #cdd3e0;padding:3px 0 3px 10px;margin:5px 0');
+        if (v.length > 1) b.appendChild(h('div', 'color:#889;font-size:11px', (i + 1) + ' di ' + v.length));
+        b.appendChild(albero(x)); w.appendChild(b);
+      });
+      return w;
+    }
+    if (typeof v === 'object') return coppie(Object.keys(v).map(k => [umano(k), typeof v[k] === 'object' ? albero(v[k]) : (v[k] == null ? null : valore(v[k]))]));
+    return h('span', null, valore(v));
+  }
+
+  function apriScheda(id, sez) {
+    if (!pannello) return;
+    if (vista.tipo !== 'scheda') pannello.__scroll = pannello.scrollTop;
+    vista = { tipo: 'scheda', id, sez: sez || 'panoramica' };
+    SS.set('pstPdpVista', vista);
+    disegna();
+    pannello.scrollTop = 0;
+    if (ROTTE[vista.sez] && !(MEM.sez[id] || {})[vista.sez]) leggiSezione(id, vista.sez);
+  }
+  function tornaElenco() {
+    vista = { tipo: 'elenco' };
+    SS.set('pstPdpVista', vista);
+    disegna();
+    pannello.scrollTop = pannello.__scroll || 0;
+  }
+  function vaiSezione(sez) {
+    vista.sez = sez; SS.set('pstPdpVista', vista); disegna();
+    if (ROTTE[sez] && !(MEM.sez[vista.id] || {})[sez]) leggiSezione(vista.id, sez);
+  }
+
+  // Stato e Depositi: l’estensione apre la pagina nell’applicazione sotto il pannello, ne legge le risposte e torna indietro
+  async function leggiSezione(id, sez) {
+    if (caricando || !ROTTE[sez]) return;
+    caricando = sez + id;
+    const voci = []; MEM.cat = voci;
+    const attendi = ms => new Promise(ok => setTimeout(ok, ms));
+    messaggio('Lettura di “' + sez + '” dal portale…');
+    disegnaScheda();
+    try {
+      history.pushState({}, '', ROTTE[sez](id));
+      window.dispatchEvent(new PopStateEvent('popstate', { state: {} }));
+      const t0 = Date.now(); voci.ultima = t0;
+      while (Date.now() - t0 < 15000) {
+        await attendi(250);
+        if (!voci.some(v => !v.fatto) && Date.now() - voci.ultima > 1500 && Date.now() - t0 > 2000) break;
+      }
+    } catch (e) { messaggio('Lettura non riuscita: ' + e.message); }
+    MEM.cat = null;
+    try { history.back(); } catch (e) {}
+    await attendi(600);
+    const utili = voci.filter(v => v.fatto).map(v => ({ m: v.m, u: v.u, req: v.req, risp: v.risp, stato: v.stato }));
+    (MEM.sez[id] = MEM.sez[id] || {})[sez] = { ora: new Date().toISOString(), voci: utili };
+    SS.set('pstPdpSez', MEM.sez);
+    caricando = '';
+    messaggio(utili.length ? '' : 'Il portale non ha restituito dati per questa sezione. Prova “Apri nella pagina originale”.');
+    disegna();
+  }
+
+  function pulsante(testo, f, css) { const b = h('button', css || BTN, testo); b.addEventListener('click', f); return b; }
+
+  function contenutoSezione(sez, it, r, dettagli) {
+    const id = it.identificativo;
+    const w = h('div');
+    if (sez === 'panoramica') {
+      const nl = r.sogg.filter(s => r.nomiDi(s).length).length;
+      const tiles = h('div', 'display:flex;gap:10px;flex-wrap:wrap;margin-bottom:16px');
+      const tile = (t, sotto, s) => { const b = h('button', 'text-align:left;padding:10px 14px;border:1px solid #b9c0d4;border-radius:8px;background:#f7f8fc;cursor:pointer;min-width:170px;font:inherit'); b.appendChild(h('div', 'font-weight:600', t)); b.appendChild(h('div', 'color:#667;font-size:12px;margin-top:2px', sotto)); b.addEventListener('click', () => vaiSezione(s)); return b; };
+      tiles.appendChild(tile('Soggetti', r.sogg.length + ' · nomi letti ' + nl + '/' + r.sogg.length, 'soggetti'));
+      tiles.appendChild(tile('Iscrizioni', (it.iscrizioniRegistro || []).length + ' registri', 'iscrizioni'));
+      tiles.appendChild(tile('Stato', it.abilitaVisulizzazioneStato === false ? 'non abilitato dal portale' : ((MEM.sez[id] || {}).stato ? 'già letto' : 'da leggere'), 'stato'));
+      tiles.appendChild(tile('Depositi', (MEM.sez[id] || {}).depositi ? 'già letti' : 'da leggere', 'depositi'));
+      tiles.appendChild(tile('Dati completi', 'ogni campo restituito dal portale', 'completi'));
+      w.appendChild(tiles);
+      const url = it.urlDisponibilitaAtti ? (() => { const a = h('a', 'color:#14c', it.urlDisponibilitaAtti); a.href = it.urlDisponibilitaAtti; a.target = '_blank'; a.rel = 'noopener'; return a; })() : null;
+      w.appendChild(coppie([
+        ['Stato del procedimento', r.stato], ['Iter', it.descrizioneIter ? it.descrizioneIter + (it.codiceIter ? ' (' + it.codiceIter + ')' : '') : null],
+        ['Data di nomina', fmtDT(it.dataNomina)], ['Data di definizione', fmtDT(it.dataDefinizione)], ['Ruolo del difensore', it.codiceTipoLegale],
+        ['Avvocatura', it.descrizioneAvvocatura], ['Accesso agli atti', [it.descrizioneStatoAccessoAtti, it.codiceStatoAccessoAtti != null ? 'codice ' + it.codiceStatoAccessoAtti : ''].filter(Boolean).join(' · ')],
+        ['Atti disponibili fino al', fmtDT(it.dataScadenzaDisponibilitaAtti)], ['Indirizzo per gli atti', url],
+        ['TAUN disponibile', sn(it.isTAUNDisponibile)], ['Marcato per indicizzazione', sn(it.isMarcatoPerIndicizzazione)],
+        ['Visualizzazione dello stato', sn(it.abilitaVisulizzazioneStato)], ['Segnalato con errori', it.faulted ? 'sì' : null],
+        ['Fascicolo Regeweb', it.identificativoFascicoloRegeWeb], ['Identificativo', id]
+      ]));
+    } else if (sez === 'soggetti') {
+      const lista = it.inizialiSoggetti || [];
+      if (!lista.length) w.appendChild(h('div', 'color:#667', 'Nessun soggetto nell’elenco.'));
+      lista.forEach(s => {
+        const nomi = r.nomiDi({ sid: s.identificativo, rid: s.idRegeWeb });
+        const det = dettagli[s.identificativo] || dettagli[String(s.idRegeWeb)] || null;
+        const b = h('div', 'border:1px solid #d5d9e6;border-radius:8px;padding:10px 14px;margin-bottom:10px');
+        b.appendChild(h('div', 'font-size:15px;font-weight:600', nomi.length ? nomi.join(', ') : (s.abbreviazione || 'Soggetto')));
+        b.appendChild(h('div', 'color:#667;font-size:12px;margin:2px 0 8px', [s.abbreviazione, s.descrizioneTipoParte, s.descrizioneTipoPersona].filter(Boolean).join(' · ')));
+        b.appendChild(coppie([['Nominato il', fmtDT(s.dataNomina)], ['Ruolo legale', s.descrizioneTipoLegale], ['Codice parte', s.codiceTipoParte], ['Tipo persona', s.codiceTipoPersona], ['Identificativo', s.identificativo], ['Id Regeweb', s.idRegeWeb]]));
+        if (det) { b.appendChild(h('div', 'margin:10px 0 4px;font-weight:600;color:#445', 'Anagrafica restituita dal portale')); b.appendChild(albero(det)); }
+        else if (!nomi.length) b.appendChild(h('div', 'margin-top:8px;color:#a60', 'Nome non ancora letto.'));
+        w.appendChild(b);
+      });
+      if (lista.some(s => !r.nomiDi({ sid: s.identificativo, rid: s.idRegeWeb }).length)) {
+        w.appendChild(h('div', 'color:#667;margin-bottom:6px', 'Per leggere i nomi mancanti l’estensione deve cliccare le iniziali nell’elenco originale: torna all’elenco e premi “Carica tutti i nomi”.'));
+        w.appendChild(pulsante('Torna all’elenco', tornaElenco));
+      }
+    } else if (sez === 'iscrizioni') {
+      const l = it.iscrizioniRegistro || [];
+      if (!l.length) w.appendChild(h('div', 'color:#667', 'Nessuna iscrizione.'));
+      l.forEach(i => {
+        const b = h('div', 'border:1px solid #d5d9e6;border-radius:8px;padding:10px 14px;margin-bottom:10px');
+        b.appendChild(h('div', 'font-size:15px;font-weight:600', (i.codiceTipoRegistro || '') + ' ' + i.numero + '/' + i.anno + (i.ufficio && i.ufficio.ufficio ? ' · ' + i.ufficio.ufficio : '')));
+        const u = i.ufficio || {}, m = i.magistrato || {};
+        b.appendChild(coppie([['Data di iscrizione', fmtDT(i.dataIscrizione)], ['Ufficio del registro', i.ufficoRegistroAmbito], ['Codice ufficio registro', i.codiceUfficioRegistro], ['Sede ufficio registro', i.sedeUfficioRegistro],
+          ['Protocollo', i.protocolloRegistro], ['Ambito', i.codiceAmbito], ['Competenza', i.codiceCompetenza], ['Magistrato', m.nominativo || [m.nome, m.cognome].filter(Boolean).join(' ')], ['Codice magistrato', m.codice],
+          ['Tipo ufficio', u.codiceTipoUfficioAmbito], ['Distretto', u.codiceDistretto], ['Circondario', u.codiceCircondario], ['Sede ufficio', u.codiceSedeUfficio]]));
+        w.appendChild(b);
+      });
+    } else if (sez === 'completi') {
+      w.appendChild(h('div', 'color:#667;margin-bottom:8px', 'Tutti i campi che il portale restituisce per questo procedimento nell’elenco, compresi quelli che l’applicazione non mostra.'));
+      w.appendChild(albero(it));
+      if (Object.keys(dettagli).length) { w.appendChild(h('div', 'margin:14px 0 4px;font-weight:600', 'Anagrafiche dei soggetti già lette')); w.appendChild(albero(dettagli)); }
+    } else if (ROTTE[sez]) {
+      const c = (MEM.sez[id] || {})[sez];
+      const barra = h('div', 'display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:8px');
+      if (caricando === sez + id) { w.appendChild(h('div', 'padding:14px;color:#556', 'Lettura in corso dal portale…')); return w; }
+      barra.appendChild(pulsante(c ? 'Rileggi' : 'Leggi dal portale', () => leggiSezione(id, sez)));
+      barra.appendChild(pulsante('Apri nella pagina originale', () => vai(ROTTE[sez](id))));
+      if (c) barra.appendChild(h('span', 'color:#778;font-size:12px', 'Letto il ' + new Date(c.ora).toLocaleString('it-IT') + ' · ' + c.voci.length + ' chiamate'));
+      w.appendChild(barra);
+      if (c && !c.voci.length) w.appendChild(h('div', 'color:#a60', 'Nessuna risposta ricevuta dal portale per questa sezione.'));
+      if (c) for (const v of c.voci) {
+        w.appendChild(h('div', 'color:#889;font-size:11px;margin-top:12px', v.m + ' …' + v.u.split('/').slice(-4).join('/') + ' · stato ' + v.stato));
+        const b = h('div', 'border:1px solid #d5d9e6;border-radius:8px;padding:8px 14px;margin-top:2px');
+        b.appendChild(albero(corpoDi(v.risp)));
+        w.appendChild(b);
+      }
+    }
+    return w;
+  }
+
+  function disegnaScheda() {
+    const box = pannello.querySelector('[data-sc]'), lista = pannello.querySelector('[data-el]');
+    const el = leggiElenco(), it = el && el.items[vista.id];
+    if (!it) { vista = { tipo: 'elenco' }; SS.set('pstPdpVista', vista); box.style.display = 'none'; lista.style.display = ''; return; }
+    lista.style.display = 'none'; box.style.display = '';
+    box.innerHTML = '';
+    const r = riga(it, SS.get('pstPdpNomi') || {});
+    const dettagli = (SS.get('pstPdpSogg') || {})[it.identificativo] || {};
+    const ids = (pannello.__righe || []).map(x => x.id), pos = ids.indexOf(it.identificativo);
+
+    const top = h('div', 'display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px');
+    top.appendChild(pulsante('← Elenco', tornaElenco));
+    const prec = pulsante('‹', () => apriScheda(ids[pos - 1], vista.sez)), succ = pulsante('›', () => apriScheda(ids[pos + 1], vista.sez));
+    prec.title = 'Procedimento precedente'; succ.title = 'Procedimento successivo';
+    prec.disabled = pos < 1; succ.disabled = pos < 0 || pos >= ids.length - 1;
+    top.appendChild(prec); top.appendChild(succ);
+    if (pos >= 0) top.appendChild(h('span', 'color:#778;font-size:12px', (pos + 1) + ' di ' + ids.length));
+    const x = pulsante('Chiudi', chiudi); x.style.marginLeft = 'auto'; top.appendChild(x);
+    box.appendChild(top);
+
+    const titolo = h('div', 'margin:4px 0 2px;font-size:20px;font-weight:700', r.registro || 'Procedimento');
+    box.appendChild(titolo);
+    box.appendChild(h('div', 'color:#556;margin-bottom:4px', [r.ufficio, r.magistrato ? 'magistrato ' + r.magistrato : '', r.stato].filter(Boolean).join(' · ')));
+    const nomiRiga = r.sogg.map(s => { const n = r.nomiDi(s); return n.length ? n.join(', ') + ' (' + (s.parte || s.abbr) + ')' : s.abbr + (s.parte ? ' (' + s.parte + ')' : ''); }).join(' · ');
+    box.appendChild(h('div', 'margin-bottom:12px', nomiRiga));
+
+    const tabs = h('div', 'display:flex;gap:2px;border-bottom:2px solid #c9cfe0;margin-bottom:14px;flex-wrap:wrap');
+    for (const [k, t] of SEZIONI) {
+      const b = h('button', 'padding:7px 14px;cursor:pointer;border:0;border-bottom:3px solid ' + (vista.sez === k ? '#2a55c8' : 'transparent') + ';background:none;font:inherit;font-weight:' + (vista.sez === k ? '700' : '400') + ';margin-bottom:-2px', t);
+      b.addEventListener('click', () => vaiSezione(k));
+      tabs.appendChild(b);
+    }
+    box.appendChild(tabs);
+    const m = h('div', 'color:#a00;margin-bottom:6px'); m.setAttribute('data-m', ''); box.appendChild(m);
+    const cont = h('div', 'max-width:1000px');
+    cont.appendChild(contenutoSezione(vista.sez, it, r, dettagli));
+    box.appendChild(cont);
   }
 
   async function un() { return tutti(); }
@@ -460,14 +715,14 @@
     pannello = document.createElement('div');
     pannello.style.cssText = 'display:none;position:fixed;inset:8px;z-index:2147483646;background:#fff;color:#111;overflow:auto;' +
       'padding:12px;font:13px sans-serif;border:1px solid #556;box-shadow:0 4px 24px rgba(0,0,0,.4)';
-    pannello.innerHTML = '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:8px">' +
+    pannello.innerHTML = '<div data-el><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:8px">' +
       '<strong>Procedimenti autorizzati</strong>' +
       '<input data-q type="search" placeholder="Cerca in tutte le colonne" style="padding:3px 6px;min-width:260px">' +
       '<label><input data-n type="checkbox"> nascondi definiti e archiviati</label>' +
       '<button data-a>Aggiorna</button><button data-t>Carica tutti i nomi</button><button data-s>Esporta CSV</button><button data-v>Svuota copia locale</button>' +
       '<button data-x style="margin-left:auto">Chiudi</button></div>' +
       '<div data-c style="margin-bottom:4px"></div><div data-d style="color:#888;font-size:11px;margin-bottom:4px"></div><div data-m style="color:#a00;margin-bottom:4px"></div>' +
-      '<table style="border-collapse:collapse;width:100%"></table>';
+      '<table style="border-collapse:collapse;width:100%"></table></div><div data-sc style="display:none"></div>';
     document.body.appendChild(pannello);
     pannello.querySelector('[data-q]').value = SS.get('pstPdpFiltro') || '';
     pannello.querySelector('[data-n]').checked = !!LS.get('pstPdpNascondi');
@@ -477,8 +732,8 @@
     pannello.querySelector('[data-s]').addEventListener('click', csv);
     pannello.querySelector('[data-t]').addEventListener('click', tutti);
     pannello.querySelector('[data-x]').addEventListener('click', chiudi);
-    pannello.querySelector('[data-v]').addEventListener('click', () => { MEM.el = null; SS.del('pstPdpElenco'); SS.del('pstPdpFiltro'); SS.del('pstPdpNomi'); disegna(); });
-    document.addEventListener('keydown', e => { if (e.key === 'Escape' && aperto) chiudi(); });
+    pannello.querySelector('[data-v]').addEventListener('click', () => { MEM.el = null; MEM.sez = {}; vista = { tipo: 'elenco' }; SS.del('pstPdpVista'); SS.del('pstPdpSez'); SS.del('pstPdpSogg'); SS.del('pstPdpElenco'); SS.del('pstPdpFiltro'); SS.del('pstPdpNomi'); disegna(); });
+    document.addEventListener('keydown', e => { if (e.key === 'Escape' && aperto) { if (vista.tipo === 'scheda') tornaElenco(); else chiudi(); } });
   }
   if (document.body) costruisci(); else document.addEventListener('DOMContentLoaded', costruisci);
 })();

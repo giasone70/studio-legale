@@ -1,5 +1,5 @@
 {
-  "versione": "0.8.0",
+  "versione": "0.9.0",
   "script": [
     { "id": "barra", "file": "barra.js", "matches": ["https://servizipst.giustizia.it/PST/*", "https://pst.giustizia.it/PST/*"], "runAt": "document_idle" },
     { "id": "scheletro", "file": "scheletro.js", "matches": ["https://servizipst.giustizia.it/PST/*", "https://pst.giustizia.it/PST/*"], "runAt": "document_idle" },
