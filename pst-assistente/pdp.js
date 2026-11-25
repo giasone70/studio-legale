@@ -283,18 +283,33 @@
       throw ult;
     })();
   }
+  // l’elenco si rilegge facendo scorrere le pagine all’applicazione: la richiesta la fa lei, l’estensione ne salva la risposta
+  let aggInCorso = false;
   async function aggiorna() {
-    const mod = LS.get('pstPdpModelli') || {};
-    const chiavi = Object.keys(mod);
-    if (!chiavi.length) { if (leggiElenco() && Object.keys(leggiElenco().items).length) return; messaggio('Apri una volta l’elenco dei procedimenti nell’applicazione: da quel momento l’estensione sa come richiederlo.'); return; }
-    messaggio('Aggiornamento in corso…');
+    if (aggInCorso) { aggInCorso = false; return; }
+    const SEL = 'app-procedimenti-view tbody.ui-table-tbody > tr.ui-selectable-row';
+    if (!document.querySelector(SEL)) { messaggio('Per aggiornare apri la pagina “Procedimenti autorizzati” (o “Procedimenti definiti”) e riprova da lì.'); return; }
+    aggInCorso = true;
+    const attendi = ms => new Promise(ok => setTimeout(ok, ms));
+    const finche = async (f, max) => { const t0 = Date.now(); while (Date.now() - t0 < (max || 4000)) { try { const v = f(); if (v) return v; } catch (e) {} await attendi(100); } return null; };
+    const firma = () => Array.from(document.querySelectorAll(SEL)).map(r => r.textContent).join('|');
+    const bt = pannello && pannello.querySelector('[data-a]'); if (bt) bt.textContent = 'Interrompi';
+    let pagina = 1;
     try {
-      for (let i = 0; i < chiavi.length; i++) await chiama(mod[chiavi[i]], i === 0);
-      messaggio('');
-    } catch (e) {
-      messaggio('Aggiornamento non riuscito (' + e.message + '). Apri l’elenco nell’applicazione: l’estensione lo salva da sola.');
-      try { const u = Number(sessionStorage.getItem('pstPdpRicarica') || 0); if (Date.now() - u > 120000) { sessionStorage.setItem('pstPdpRicarica', String(Date.now())); messaggio('Aggiornamento diretto rifiutato dal portale: ricarico la pagina per far rileggere l’elenco all’applicazione…'); setTimeout(() => location.reload(), 1200); } } catch (e2) {}
-    }
+      const primo = document.querySelector('p-paginator .ui-paginator-first');
+      if (primo && !primo.classList.contains('ui-state-disabled')) { const f0 = firma(); primo.click(); await finche(() => firma() !== f0, 4000); await attendi(300); }
+      while (aggInCorso) {
+        messaggio('Aggiornamento: pagina ' + pagina + '…');
+        const next = document.querySelector('p-paginator .ui-paginator-next');
+        if (!next || next.classList.contains('ui-state-disabled')) break;
+        const f1 = firma(); next.click();
+        if (!(await finche(() => firma() !== f1, 6000))) break;
+        await attendi(300); pagina++;
+      }
+      messaggio('Aggiornamento completato: ' + pagina + ' pagine lette.');
+    } catch (e) { messaggio('Aggiornamento interrotto: ' + e.message); }
+    aggInCorso = false; if (bt) bt.textContent = 'Aggiorna';
+    disegna();
   }
 
   // ---------- interfaccia ----------
@@ -335,7 +350,6 @@
     chiudi();
     history.pushState({}, '', percorso);
     window.dispatchEvent(new PopStateEvent('popstate', { state: {} }));
-    setTimeout(() => { if (location.pathname === percorso && document.querySelector('app-procedimenti-autorizzati')) location.reload(); }, 1500);
   }
 
   function disegna() {
@@ -700,8 +714,7 @@
     pannello.style.display = 'block';
     disegna();
     const el = leggiElenco();
-    const vecchio = !el || !el.aggiornato || Date.now() - new Date(el.aggiornato).getTime() > 15 * 60 * 1000;
-    if (!el || !Object.keys(el.items).length || vecchio) aggiorna();
+    if (!el || !Object.keys(el.items).length) messaggio('Nessun dato in memoria: apri la pagina “Procedimenti autorizzati” e scorri l’elenco, oppure premi “Aggiorna” da quella pagina.');
     pannello.querySelector('[data-q]').focus();
   }
 
