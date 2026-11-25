@@ -533,6 +533,21 @@
     disegna();
   }
 
+  // salva solo la forma dei dati (nomi dei campi, tipi, quantità), senza i valori
+  function forma(v, liv) {
+    if (v === null || v === undefined) return 'null';
+    if (Array.isArray(v)) return v.length ? ['n=' + v.length, forma(v.reduce((m, x) => (x && typeof x === 'object' && Object.keys(x).length > Object.keys(m || {}).length ? x : (m === undefined ? x : m)), undefined), liv + 1)] : [];
+    if (typeof v === 'object') { if (liv > 8) return '{…}'; const o = {}; for (const k of Object.keys(v)) o[k] = forma(v[k], liv + 1); return o; }
+    return typeof v;
+  }
+  function salvaForma(sez, c) {
+    const dati = { sezione: sez, ora: c.ora, voci: c.voci.map(v => ({ metodo: v.m, url: v.u.replace(/[0-9a-f]{8}-[0-9a-f-]{27}/gi, '{id}'), stato: v.stato, richiesta: forma(v.req, 0), risposta: forma(v.risp, 0) })) };
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob([JSON.stringify(dati, null, 1)], { type: 'application/json' }));
+    a.download = 'dati_' + sez + '_' + Date.now() + '.json';
+    document.body.appendChild(a); a.click(); a.remove();
+  }
+
   function pulsante(testo, f, css) { const b = h('button', css || BTN, testo); b.addEventListener('click', f); return b; }
 
   function contenutoSezione(sez, it, r, dettagli) {
@@ -598,6 +613,7 @@
       if (caricando === sez + id) { w.appendChild(h('div', 'padding:14px;color:#556', 'Lettura in corso dal portale…')); return w; }
       barra.appendChild(pulsante(c ? 'Rileggi' : 'Leggi dal portale', () => leggiSezione(id, sez)));
       barra.appendChild(pulsante('Apri nella pagina originale', () => vai(ROTTE[sez](id))));
+      if (c && c.voci.length) barra.appendChild(pulsante('Salva struttura dati', () => salvaForma(sez, c)));
       if (c) barra.appendChild(h('span', 'color:#778;font-size:12px', 'Letto il ' + new Date(c.ora).toLocaleString('it-IT') + ' · ' + c.voci.length + ' chiamate'));
       w.appendChild(barra);
       if (c && !c.voci.length) w.appendChild(h('div', 'color:#a60', 'Nessuna risposta ricevuta dal portale per questa sezione.'));
