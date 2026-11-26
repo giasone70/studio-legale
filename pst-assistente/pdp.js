@@ -293,7 +293,7 @@
   async function scorri(continua, avanza) {
     const firma = () => Array.from(document.querySelectorAll(SEL_LISTA)).map(r => r.textContent).join('|');
     const attivo = b => b && !b.classList.contains('ui-state-disabled');
-    let pagina = 1, completo = false;
+    let pagina = 1, completo = false, motivo = '';
     const primo = document.querySelector('p-paginator .ui-paginator-first');
     const succ = () => document.querySelector('p-paginator .ui-paginator-next');
     if (attivo(primo)) { const f0 = firma(); primo.click(); await finche(() => firma() !== f0, 4000); await attendi(300); }
@@ -307,10 +307,13 @@
       const next = succ();
       if (!next || !attivo(next)) { completo = true; break; }
       const f1 = firma(); next.click();
-      if (!(await finche(() => firma() !== f1, 6000))) break;
+      let ok = await finche(() => firma() !== f1, 8000);
+      if (!ok) { const n2 = succ(); if (attivo(n2)) { n2.click(); ok = await finche(() => firma() !== f1, 8000); } }
+      if (!ok) { motivo = 'la tabella non è cambiata dopo il clic sulla pagina ' + (pagina + 1); break; }
       await attendi(300); pagina++;
     }
-    return { pagine: pagina, completo };
+    if (!completo && !motivo) motivo = 'interrotto';
+    return { pagine: pagina, completo, motivo };
   }
   async function aggiorna() {
     if (aggInCorso) { aggInCorso = false; return; }
@@ -546,11 +549,15 @@
         MEM.visti = {};
         history.pushState({}, '', rotta); passi++;
         window.dispatchEvent(new PopStateEvent('popstate', { state: {} }));
-        if (!(await finche(() => document.querySelector(SEL_LISTA), 15000, 250))) { esiti.push('elenco dei ' + NOME_LISTA[lista] + ' non raggiunto'); MEM.visti = null; continue; }
-        await attendi(800);
+        // si attende che l’applicazione abbia ricevuto l’elenco della nuova pagina, non solo che ci siano righe (potrebbero essere quelle della pagina precedente)
+        if (!(await finche(() => document.querySelector(SEL_LISTA) && Object.keys(MEM.visti || {}).length, 20000, 250))) { esiti.push('elenco dei ' + NOME_LISTA[lista] + ' non raggiunto'); MEM.visti = null; continue; }
+        await attendi(1200);
+        const prima = MEM.visti; MEM.visti = {};   // la pagina può aver fatto più richieste: si riparte da zero e si rilegge dalla prima pagina
         const r = await scorri(() => !stop, p => { tx.textContent = 'Controllo novità: ' + NOME_LISTA[lista] + ', pagina ' + p + '…'; });
+        if (!Object.keys(MEM.visti).length && r.pagine === 1) MEM.visti = prima;
+        if (lista === 'definiti') for (const k of Object.keys(MEM.visti)) { const it = MEM.visti[k]; if (!(it.definito || it.archiviato)) delete MEM.visti[k]; }
         if (r.completo && !stop) esiti.push(nvConfronta(lista, MEM.visti, ctl).testo);
-        else esiti.push('lettura dei ' + NOME_LISTA[lista] + ' interrotta');
+        else esiti.push('lettura dei ' + NOME_LISTA[lista] + ' interrotta (' + (stop ? 'su richiesta' : r.motivo) + ', pagine lette ' + r.pagine + ')');
         MEM.visti = null;
       }
     } catch (e) { esiti.push('errore: ' + e.message); }
@@ -815,7 +822,7 @@
   }
 
   // soggetti ed esiti dello Stato (sentenze, provvedimenti): il portale li invia nella risposta /stato e in quella dello storico
-  const RX_ESITO = /sentenz|esit|dispositiv|provvedim|condann|assoluz|pena|decision|deliber|ordinanz|decreto/i;
+  const RX_ESITO = /sentenz|esit|dispositiv|provvedim|condann|assoluz|pena|decision|deliber|ordinanz|decreto|irrevocab|grado/i;
   function soggettiStato(id) {
     const out = [];
     for (const v of vociDi(id, 'stato')) { const it = v.risp && v.risp.result && v.risp.result.item; if (it && it.soggetti && !vuoto(it.soggetti)) out.push(it.soggetti); }
@@ -831,13 +838,45 @@
     for (const v of vociDi(id, 'stato')) { const r = corpoDi(v.risp); if (r && typeof r === 'object') { const c = Object.assign({}, r); delete c.soggetti; giu(c, ''); } }
     return out;
   }
+  // oggetti annidati che hanno i campi indicati, con il nome del soggetto a cui appartengono
+  function trovaOggetti(v, test, ctx, out) {
+    const nome = o => ['cognome', 'nome', 'denominazione', 'nominativo', 'abbreviazione'].map(k => o[k]).filter(x => x && typeof x !== 'object').join(' ');
+    if (Array.isArray(v)) v.forEach(x => trovaOggetti(x, test, ctx, out));
+    else if (v && typeof v === 'object') {
+      const c = nome(v) || ctx;
+      if (test(v)) out.push({ o: v, s: c });
+      else Object.keys(v).forEach(k => { if (v[k] && typeof v[k] === 'object') trovaOggetti(v[k], test, c, out); });
+    }
+    return out;
+  }
   function renderEsiti(id) {
     const w = h('div');
     const sg = soggettiStato(id), es = cercaEsiti(id);
-    w.appendChild(h('div', 'font-weight:600;margin:16px 0 6px', 'Soggetti, esiti e sentenze'));
-    if (es.length) { w.appendChild(h('div', 'color:#667;font-size:12px;margin-bottom:4px', 'Campi della risposta del portale che riguardano esiti, sentenze o provvedimenti.')); w.appendChild(coppie(es)); }
-    if (sg.length) sg.forEach(x => { const b = h('div', 'border:1px solid #d5d9e6;border-radius:8px;padding:8px 14px;margin-top:6px'); b.appendChild(albero(x)); w.appendChild(b); });
-    if (!es.length && !sg.length) w.appendChild(h('div', 'color:#667', 'Per questo procedimento il portale non restituisce soggetti o esiti nello Stato. Se la pagina originale mostra sentenze, premi “Salva struttura dati” e mandami il file.'));
+    w.appendChild(h('div', 'font-weight:600;margin:16px 0 6px', 'Sentenze e impugnazioni'));
+    const sent = trovaOggetti(sg, o => ('numeroSentenza' in o || 'annoSentenza' in o || 'codiceGrado' in o), '', []);
+    const imp = trovaOggetti(sg, o => Object.keys(o).some(k => /impugn/i.test(k) && !/^\d+$/.test(k)) && !('numeroSentenza' in o), '', []);
+    const note = [];
+    if (sent.length) {
+      const DATE = [['dataPrevistoDeposito', 'Deposito previsto'], ['dataProrogaSentenza', 'Deposito prorogato'], ['dataDepositoSentenza', 'Depositata il'], ['dataIrrevocabilita', 'Irrevocabile dal']];
+      const usati = new Set(['numeroSentenza', 'annoSentenza', 'codiceGrado'].concat(DATE.map(d => d[0])));
+      const extra = []; sent.forEach(x => Object.keys(x.o).forEach(k => { if (!usati.has(k) && !vuoto(x.o[k]) && typeof x.o[k] !== 'object' && extra.indexOf(k) < 0) extra.push(k); }));
+      w.appendChild(tabellaDati(['Soggetto', 'Grado', 'Sentenza n.', 'Anno'].concat(DATE.map(d => d[1]), extra.map(umano)), sent, (tb, x) => {
+        const tr = tb.insertRow(); tr.style.borderBottom = '1px solid #e3e3ea';
+        [x.s, x.o.codiceGrado, x.o.numeroSentenza, x.o.annoSentenza].concat(DATE.map(d => x.o[d[0]] ? fmtDT(x.o[d[0]]) : ''), extra.map(k => valore(x.o[k]))).forEach(t => { const td = tr.insertCell(); td.style.padding = '5px 8px'; td.textContent = t == null ? '' : String(t); });
+      }));
+    } else note.push('Nessuna sentenza registrata per i soggetti di questo procedimento.');
+    if (imp.length) {
+      w.appendChild(h('div', 'font-weight:600;margin:12px 0 4px', 'Impugnazioni'));
+      imp.forEach(x => { const b = h('div', 'border:1px solid #d5d9e6;border-radius:8px;padding:6px 12px;margin-top:4px'); if (x.s) b.appendChild(h('div', 'color:#667;font-size:12px', x.s)); b.appendChild(albero(x.o)); w.appendChild(b); });
+    }
+    if (es.length) { w.appendChild(h('div', 'font-weight:600;margin:12px 0 4px', 'Altri campi su esiti e provvedimenti')); w.appendChild(coppie(es)); }
+    if (!sg.length) note.push('Il portale non restituisce l’elenco dei soggetti nello Stato di questo procedimento.');
+    note.forEach(t => w.appendChild(h('div', 'color:#667;margin-top:4px', t)));
+    if (sg.length) {
+      const dt = h('details', 'margin-top:10px'); dt.appendChild(h('summary', 'cursor:pointer;color:#445', 'Tutti i dati dei soggetti dello Stato'));
+      sg.forEach(x => { const b = h('div', 'border:1px solid #d5d9e6;border-radius:8px;padding:8px 14px;margin-top:6px'); b.appendChild(albero(x)); dt.appendChild(b); });
+      w.appendChild(dt);
+    }
     return w;
   }
 
