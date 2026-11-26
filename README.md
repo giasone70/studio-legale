@@ -1,6 +1,6 @@
 # Sito dello Studio Legale Silvestro
 
-Sito statico per GitHub Pages, compilato da Jekyll (il motore già integrato in GitHub Pages: non occorre installare nulla). I contenuti provengono da studiolegalesilvestro.wordpress.com.
+Sito statico per GitHub Pages, compilato da Jekyll (il motore già integrato in GitHub Pages: non occorre installare nulla). 
 
 ## Come è organizzato
 
