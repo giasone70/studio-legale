@@ -5,6 +5,7 @@
   window.__pstPdp = true;
   const API = '/PST/PAVVP/consultazioni/_ws/api/fascicoli/autorizzati';
   const PERC = '/PST/PAVVP/consultazioni/';
+  const RX_LISTA = /\/_ws\/api\/fascicoli\/[a-z-]*(autorizzati|definiti)[a-z-]*$/i;
   const arch = s => ({
     get: k => { try { return JSON.parse(s.getItem(k)); } catch (e) { return null; } },
     set: (k, v) => { try { s.setItem(k, JSON.stringify(v)); } catch (e) {} },
@@ -13,7 +14,7 @@
   const LS = arch(localStorage);     // solo preferenze e modelli di richiesta, senza dati dei procedimenti
   const SS = arch(sessionStorage);   // elenco dei procedimenti: scompare alla chiusura della scheda
 
-  let pannello = null, aperto = false;
+  let pannello = null, aperto = false, btnApri = null;
   // l’elenco sta anche in memoria: il portale potrebbe svuotare sessionStorage
   const MEM = window.__pstPdpMem = window.__pstPdpMem || { el: null };
   MEM.sez = MEM.sez || SS.get('pstPdpSez') || {};   // sezioni lette dal portale: { idProcedimento: { stato: {ora, voci}, depositi: {...} } }
@@ -27,7 +28,7 @@
   function memorizza(items, sostituisci) {
     const el = leggiElenco() || { items: {} };
     if (sostituisci && items.length) el.items = {};
-    for (const it of items) if (it && it.identificativo) el.items[it.identificativo] = it;
+    for (const it of items) if (it && it.identificativo) { el.items[it.identificativo] = it; if (MEM.visti) MEM.visti[it.identificativo] = it; }
     el.aggiornato = new Date().toISOString();
     scriviElenco(el);
     D.elementi = Object.keys(el.items).length;
@@ -167,7 +168,7 @@
     const x = this;
     D.xhr++;
     const perc = percorso(x.__pu || '');
-    const lista = /^post$/i.test(x.__pm || '') && perc.endsWith('/_ws/api/fascicoli/autorizzati');
+    const lista = /^post$/i.test(x.__pm || '') && RX_LISTA.test(perc);
     const altra = !lista && !x.__proprio && perc.indexOf('/_ws/api/') >= 0 && !/\/(codificati|system)\//.test(perc);
     if (perc.indexOf('/_ws/api/') >= 0 && !x.__proprio) D.host = origineDi(x.__pu) === location.origin ? 'stesso' : origineDi(x.__pu);
     if (/^post$/i.test(x.__pm || '')) D.post = perc.split('/').slice(-3).join('/');
@@ -217,7 +218,7 @@
       try {
         const url = typeof i === 'string' ? i : (i && i.url) || '';
         const metodo = (o && o.method) || (i && i.method) || 'GET';
-        if (/^post$/i.test(metodo) && percorso(url).endsWith('/_ws/api/fascicoli/autorizzati')) {
+        if (/^post$/i.test(metodo) && RX_LISTA.test(percorso(url))) {
           D.lista++;
           p.then(r => r.clone().json().then(j => {
             const items = j && j.result && j.result.items;
@@ -285,30 +286,49 @@
   }
   // l’elenco si rilegge facendo scorrere le pagine all’applicazione: la richiesta la fa lei, l’estensione ne salva la risposta
   let aggInCorso = false;
+  const SEL_LISTA = 'app-procedimenti-view tbody.ui-table-tbody > tr.ui-selectable-row';
+  const attendi = ms => new Promise(ok => setTimeout(ok, ms));
+  const finche = async (f, max, passo) => { const t0 = Date.now(); while (Date.now() - t0 < (max || 4000)) { try { const v = f(); if (v) return v; } catch (e) {} await attendi(passo || 100); } return null; };
+  // fa scorrere le pagine dell’elenco originale, dalla prima all’ultima: le richieste le fa l’applicazione
+  async function scorri(continua, avanza) {
+    const firma = () => Array.from(document.querySelectorAll(SEL_LISTA)).map(r => r.textContent).join('|');
+    const attivo = b => b && !b.classList.contains('ui-state-disabled');
+    let pagina = 1, completo = false;
+    const primo = document.querySelector('p-paginator .ui-paginator-first');
+    const succ = () => document.querySelector('p-paginator .ui-paginator-next');
+    if (attivo(primo)) { const f0 = firma(); primo.click(); await finche(() => firma() !== f0, 4000); await attendi(300); }
+    else if (attivo(succ())) {   // già sulla prima pagina: si va avanti e indietro per far rileggere anche quella
+      const f0 = firma(); succ().click(); await finche(() => firma() !== f0, 6000); await attendi(300);
+      const p2 = document.querySelector('p-paginator .ui-paginator-first'), f1 = firma();
+      if (attivo(p2)) { p2.click(); await finche(() => firma() !== f1, 6000); await attendi(300); }
+    }
+    while (continua()) {
+      if (avanza) avanza(pagina);
+      const next = succ();
+      if (!next || !attivo(next)) { completo = true; break; }
+      const f1 = firma(); next.click();
+      if (!(await finche(() => firma() !== f1, 6000))) break;
+      await attendi(300); pagina++;
+    }
+    return { pagine: pagina, completo };
+  }
   async function aggiorna() {
     if (aggInCorso) { aggInCorso = false; return; }
-    const SEL = 'app-procedimenti-view tbody.ui-table-tbody > tr.ui-selectable-row';
-    if (!document.querySelector(SEL)) { messaggio('Per aggiornare apri la pagina “Procedimenti autorizzati” (o “Procedimenti definiti”) e riprova da lì.'); return; }
+    if (caricando) return;
+    if (!document.querySelector(SEL_LISTA)) { messaggio('Per aggiornare apri la pagina “Procedimenti autorizzati” (o “Procedimenti definiti”) e riprova da lì.'); return; }
     aggInCorso = true;
-    const attendi = ms => new Promise(ok => setTimeout(ok, ms));
-    const finche = async (f, max) => { const t0 = Date.now(); while (Date.now() - t0 < (max || 4000)) { try { const v = f(); if (v) return v; } catch (e) {} await attendi(100); } return null; };
-    const firma = () => Array.from(document.querySelectorAll(SEL)).map(r => r.textContent).join('|');
     const bt = pannello && pannello.querySelector('[data-a]'); if (bt) bt.textContent = 'Interrompi';
-    let pagina = 1;
+    const lista = listaCorrente();
+    MEM.visti = {};
+    let esito = '';
     try {
-      const primo = document.querySelector('p-paginator .ui-paginator-first');
-      if (primo && !primo.classList.contains('ui-state-disabled')) { const f0 = firma(); primo.click(); await finche(() => firma() !== f0, 4000); await attendi(300); }
-      while (aggInCorso) {
-        messaggio('Aggiornamento: pagina ' + pagina + '…');
-        const next = document.querySelector('p-paginator .ui-paginator-next');
-        if (!next || next.classList.contains('ui-state-disabled')) break;
-        const f1 = firma(); next.click();
-        if (!(await finche(() => firma() !== f1, 6000))) break;
-        await attendi(300); pagina++;
-      }
-      messaggio('Aggiornamento completato: ' + pagina + ' pagine lette.');
-    } catch (e) { messaggio('Aggiornamento interrotto: ' + e.message); }
+      const r = await scorri(() => aggInCorso, p => messaggio('Aggiornamento: pagina ' + p + '…'));
+      esito = 'Aggiornamento completato: ' + r.pagine + ' pagine lette.';
+      if (r.completo && aggInCorso) { const n = nvConfronta(lista, MEM.visti, String(Date.now())); esito += ' ' + n.testo; }
+    } catch (e) { esito = 'Aggiornamento interrotto: ' + e.message; }
+    MEM.visti = null;
     aggInCorso = false; if (bt) bt.textContent = 'Aggiorna';
+    messaggio(esito);
     disegna();
   }
 
@@ -358,6 +378,7 @@
       disegnaInt();
       const lista = pannello && pannello.querySelector('[data-el]'), sc = pannello && pannello.querySelector('[data-sc]');
       if (vista.tipo === 'scheda') disegnaScheda();
+      else if (vista.tipo === 'novita') disegnaNovita();
       else if (lista) { lista.style.display = ''; sc.style.display = 'none'; }
     } catch (e) { D.errore = 'disegno: ' + (e && e.message || e); diag(); }
   }
@@ -431,6 +452,190 @@
       }
     }
     pannello.__righe = v;
+  }
+
+  // ---------- novità: fascicoli aggiunti, rimossi o modificati ----------
+  // Si conserva, in questo browser, una copia di ciò che l’elenco riporta per ciascun procedimento (registro, iniziali, iter, date, stato).
+  // Ad ogni lettura completa dell’elenco si confronta con la copia precedente. Le novità restano finché non si segnano come lette.
+  const NV_ORE = 6;
+  const nvLeggi = () => { const s = LS.get('pstPdpNovita') || {}; s.snap = s.snap || {}; s.base = s.base || {}; s.voci = s.voci || []; if (s.auto == null) s.auto = true; return s; };
+  const nvScrivi = s => { LS.set('pstPdpNovita', s); nvBadge(); };
+  const nvNonLette = () => nvLeggi().voci.filter(v => !v.letto);
+  const listaCorrente = () => /definit/i.test(location.pathname) ? 'definiti' : 'attivi';
+  const NOME_LISTA = { attivi: 'procedimenti autorizzati', definiti: 'procedimenti definiti' };
+
+  function piatto(v, pre, out) {
+    if (Array.isArray(v)) {
+      if (v.every(x => x == null || typeof x !== 'object')) { if (v.length) out[pre] = v.map(String).sort().join(', '); }
+      else v.forEach((x, i) => { const k = x && typeof x === 'object' ? (x.identificativo || x.idRegeWeb || (x.numero != null ? x.numero + '/' + x.anno : null) || i) : i; piatto(x, pre + '[' + k + ']', out); });
+    } else if (v && typeof v === 'object') Object.keys(v).forEach(k => piatto(v[k], pre ? pre + '.' + k : k, out));
+    else if (v != null && v !== '') out[pre] = String(v);
+    return out;
+  }
+  const etichetta = k => k.split('.').map(p => umano(p.replace(/\[[^\]]*\]/g, ''))).join(' › ');
+  const vv = t => { if (t === 'true') return 'sì'; if (t === 'false') return 'no'; const x = /^\d{4}-\d{2}-\d{2}/.test(t) ? fmtDT(t) : t; return x.length > 70 ? x.slice(0, 70) + '…' : x; };
+  function differenze(a, b) {
+    const out = [], chiavi = new Set(Object.keys(a).concat(Object.keys(b)));
+    for (const k of chiavi) {
+      if (a[k] === b[k]) continue;
+      if (a[k] === undefined) out.push(etichetta(k) + ': aggiunto ' + vv(b[k]));
+      else if (b[k] === undefined) out.push(etichetta(k) + ': tolto (era ' + vv(a[k]) + ')');
+      else out.push(etichetta(k) + ': ' + vv(a[k]) + ' → ' + vv(b[k]));
+    }
+    if (out.length > 12) { const n = out.length - 12; out.length = 12; out.push('… e altre ' + n + ' differenze'); }
+    return out;
+  }
+  const titoloDi = it => { const r = riga(it, null); return { t: r.registro || it.identificativo, u: r.ufficio, s: (it.inizialiSoggetti || []).map(x => x.abbreviazione).filter(Boolean).join(' ') }; };
+
+  // confronta la lettura completa di un elenco con la copia precedente; ctl identifica il controllo in corso
+  function nvConfronta(lista, items, ctl) {
+    const ids = Object.keys(items || {});
+    const s = nvLeggi(), vecchio = s.snap[lista] || {}, primo = !s.base[lista];
+    if (!ids.length) return { testo: 'Nessun dato letto dall’elenco dei ' + NOME_LISTA[lista] + ': nessun confronto.', n: 0 };
+    if (!primo && ids.length < 0.5 * Object.keys(vecchio).length) return { testo: 'Lettura incompleta dell’elenco dei ' + NOME_LISTA[lista] + ' (' + ids.length + ' contro ' + Object.keys(vecchio).length + ' precedenti): nessun confronto.', n: 0 };
+    const nuovo = {};
+    for (const id of ids) nuovo[id] = Object.assign(titoloDi(items[id]), { f: piatto(items[id], '', {}) });
+    const ora = new Date().toISOString(), voci = [];
+    const nuova = (tipo, id, t, dettaglio) => voci.push({ k: ora + id + tipo, c: ctl, tipo, id, lista, t: t.t, u: t.u, s: t.s, quando: ora, dettaglio: dettaglio || [], letto: false });
+    if (!primo) {
+      for (const id of ids) {
+        if (!vecchio[id]) nuova('aggiunto', id, nuovo[id]);
+        else { const d = differenze(vecchio[id].f, nuovo[id].f); if (d.length) nuova('modificato', id, nuovo[id], d); }
+      }
+      for (const id of Object.keys(vecchio)) if (!nuovo[id]) nuova('rimosso', id, vecchio[id]);
+      // un procedimento che passa da un elenco all’altro nello stesso controllo è una sola novità
+      const altre = s.voci.filter(v => v.c === ctl && v.lista !== lista && !v.letto);
+      for (const v of voci.slice()) {
+        const o = altre.find(x => x.id === v.id && ((x.tipo === 'rimosso' && v.tipo === 'aggiunto') || (x.tipo === 'aggiunto' && v.tipo === 'rimosso')));
+        if (!o) continue;
+        const verso = v.tipo === 'aggiunto' ? 'dai ' + NOME_LISTA[o.lista] + ' ai ' + NOME_LISTA[lista] : 'dai ' + NOME_LISTA[lista] + ' ai ' + NOME_LISTA[o.lista];
+        voci.splice(voci.indexOf(v), 1);
+        o.tipo = 'modificato'; o.dettaglio = ['Passato ' + verso]; o.lista = lista;
+      }
+    }
+    s.snap[lista] = nuovo;
+    s.base[lista] = s.base[lista] || ora;
+    s.ultimo = ora;
+    s.voci = voci.concat(s.voci).filter(v => !v.letto || Date.now() - new Date(v.quando) < 60 * 864e5).slice(0, 600);
+    nvScrivi(s);
+    if (aperto) disegna();
+    const testo = primo ? 'Copia di partenza salvata per ' + ids.length + ' ' + NOME_LISTA[lista] + ': le novità compariranno dai prossimi controlli.'
+      : voci.length ? voci.length + ' novità negli ' + (lista === 'attivi' ? 'attivi' : 'definiti') + '.' : 'Nessuna novità negli ' + (lista === 'attivi' ? 'attivi' : 'definiti') + '.';
+    return { testo, n: voci.length };
+  }
+
+  // controllo senza intervento: apre in sequenza gli elenchi nell’applicazione, li scorre, poi torna dov’era
+  let ctlInCorso = false;
+  async function controllaNovita(manuale) {
+    if (ctlInCorso || caricando || aggInCorso || inCorso) return;
+    ctlInCorso = true; caricando = 'novita';
+    const origine = location.pathname + location.search;
+    const ctl = String(Date.now());
+    const barra = h('div', 'position:fixed;top:8px;left:50%;transform:translateX(-50%);z-index:2147483647;background:#223;color:#fff;padding:8px 14px;border-radius:8px;font:13px sans-serif;box-shadow:0 2px 12px rgba(0,0,0,.4);display:flex;gap:12px;align-items:center');
+    const tx = h('span', null, 'Controllo novità…'); barra.appendChild(tx);
+    let stop = false;
+    barra.appendChild(pulsante('Interrompi', () => { stop = true; tx.textContent = 'Interruzione…'; }, 'cursor:pointer;padding:2px 10px'));
+    document.body.appendChild(barra);
+    const esiti = []; let passi = 0;
+    try {
+      const ld = document.querySelector('a[href*="definiti"]'), href = ld && ld.getAttribute('href');
+      const rotte = [['attivi', PERC + 'procedimenti-autorizzati'], ['definiti', href || PERC + 'procedimenti-autorizzati-definiti']];
+      for (const [lista, rotta] of rotte) {
+        if (stop) break;
+        tx.textContent = 'Controllo novità: ' + NOME_LISTA[lista] + '…';
+        MEM.visti = {};
+        history.pushState({}, '', rotta); passi++;
+        window.dispatchEvent(new PopStateEvent('popstate', { state: {} }));
+        if (!(await finche(() => document.querySelector(SEL_LISTA), 15000, 250))) { esiti.push('elenco dei ' + NOME_LISTA[lista] + ' non raggiunto'); MEM.visti = null; continue; }
+        await attendi(800);
+        const r = await scorri(() => !stop, p => { tx.textContent = 'Controllo novità: ' + NOME_LISTA[lista] + ', pagina ' + p + '…'; });
+        if (r.completo && !stop) esiti.push(nvConfronta(lista, MEM.visti, ctl).testo);
+        else esiti.push('lettura dei ' + NOME_LISTA[lista] + ' interrotta');
+        MEM.visti = null;
+      }
+    } catch (e) { esiti.push('errore: ' + e.message); }
+    MEM.visti = null;
+    try { if (passi) { history.go(-passi); await attendi(900); } if (location.pathname + location.search !== origine) { history.pushState({}, '', origine); window.dispatchEvent(new PopStateEvent('popstate', { state: {} })); } } catch (e) {}
+    barra.remove();
+    caricando = ctlInCorso = false;
+    const s = nvLeggi(); s.ultimoEsito = esiti.join(' ');
+    if (!esiti.some(x => /interrott|errore|non raggiunto/.test(x))) s.ultimoControllo = new Date().toISOString();
+    nvScrivi(s);
+    homeCard(); if (aperto) disegna();
+  }
+  function avvioAutomatico() {
+    const s = nvLeggi();
+    if (!s.auto || !/\/home\/?$/.test(location.pathname) || ctlInCorso) return;
+    if (s.ultimoControllo && Date.now() - new Date(s.ultimoControllo) < NV_ORE * 36e5) return;
+    controllaNovita(false);
+  }
+
+  function segna(chiavi, letto) {
+    const s = nvLeggi();
+    s.voci.forEach(v => { if (chiavi === 'tutte' || chiavi.indexOf(v.k) >= 0) v.letto = letto; });
+    nvScrivi(s); homeCard(); if (aperto) disegna();
+  }
+  const ETICHETTA_TIPO = { aggiunto: ['Aggiunto', '#1d7a3a'], rimosso: ['Rimosso', '#b3261e'], modificato: ['Modificato', '#a65f00'] };
+  function renderNovita(w, compatto) {
+    const s = nvLeggi(), voci = compatto ? s.voci.filter(v => !v.letto) : s.voci;
+    const el = leggiElenco();
+    if (!voci.length) w.appendChild(h('div', 'color:#667;padding:6px 0', compatto ? 'Nessuna novità da leggere.' : 'Nessuna novità registrata.'));
+    for (const v of voci) {
+      const b = h('div', 'border:1px solid ' + (v.letto ? '#dde' : '#c7cde0') + ';border-left:5px solid ' + ETICHETTA_TIPO[v.tipo][1] + ';border-radius:6px;padding:6px 10px;margin:6px 0;background:' + (v.letto ? '#fafafa' : '#fff') + (v.letto ? ';color:#778' : ''));
+      const t = h('div', 'display:flex;gap:8px;align-items:baseline;flex-wrap:wrap');
+      t.appendChild(h('span', 'font-weight:700;color:' + ETICHETTA_TIPO[v.tipo][1], ETICHETTA_TIPO[v.tipo][0]));
+      t.appendChild(h('span', 'font-weight:600', v.t));
+      if (v.u) t.appendChild(h('span', 'color:#667', v.u));
+      if (v.s) t.appendChild(h('span', 'color:#667', '· ' + v.s));
+      t.appendChild(h('span', 'color:#889;font-size:11px;margin-left:auto', new Date(v.quando).toLocaleString('it-IT') + ' · ' + (v.lista === 'definiti' ? 'definiti' : 'attivi')));
+      b.appendChild(t);
+      for (const d of v.dettaglio) b.appendChild(h('div', 'font-size:12px;color:#445;margin-top:2px', d));
+      const az = h('div', 'margin-top:4px;display:flex;gap:6px');
+      if (el && el.items[v.id]) az.appendChild(pulsante('Apri scheda', () => { if (!aperto) apri(); apriScheda(v.id, 'panoramica'); }, 'cursor:pointer;padding:1px 8px;font-size:12px'));
+      az.appendChild(pulsante(v.letto ? 'Segna da leggere' : 'Segna come letta', () => segna([v.k], !v.letto), 'cursor:pointer;padding:1px 8px;font-size:12px'));
+      b.appendChild(az); w.appendChild(b);
+    }
+  }
+  function disegnaNovita() {
+    const box = pannello.querySelector('[data-sc]'), lista = pannello.querySelector('[data-el]');
+    lista.style.display = 'none'; box.style.display = ''; box.innerHTML = '';
+    const s = nvLeggi();
+    const top = h('div', 'display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px');
+    top.appendChild(pulsante('← Elenco', tornaElenco));
+    top.appendChild(h('strong', 'font-size:18px', 'Novità sui fascicoli'));
+    top.appendChild(pulsante('Controlla ora', () => controllaNovita(true)));
+    top.appendChild(pulsante('Segna tutte come lette', () => segna('tutte', true)));
+    const x = pulsante('Chiudi', chiudi); x.style.marginLeft = 'auto'; top.appendChild(x);
+    box.appendChild(top);
+    const lb = h('label', 'display:block;margin-bottom:6px'); const cb = h('input'); cb.type = 'checkbox'; cb.checked = !!s.auto;
+    cb.addEventListener('change', () => { const t = nvLeggi(); t.auto = cb.checked; nvScrivi(t); });
+    lb.appendChild(cb); lb.appendChild(document.createTextNode(' Controllo automatico quando apri la home del portale (al massimo ogni ' + NV_ORE + ' ore)'));
+    box.appendChild(lb);
+    box.appendChild(h('div', 'color:#667;font-size:12px;margin-bottom:8px', 'Ultimo controllo: ' + (s.ultimo ? new Date(s.ultimo).toLocaleString('it-IT') : 'mai') + (s.ultimoEsito ? ' · ' + s.ultimoEsito : '') + '. Il confronto riguarda ciò che l’elenco riporta (registro, iniziali, iter, date, stato): nuovi depositi, udienze o sentenze compaiono solo se cambiano quei dati.'));
+    const m = h('div', 'color:#a00;margin-bottom:6px'); m.setAttribute('data-m', ''); box.appendChild(m);
+    const w = h('div', 'max-width:1000px'); renderNovita(w, false); box.appendChild(w);
+  }
+  function nvBadge() {
+    const n = nvNonLette().length;
+    if (btnApri) btnApri.textContent = 'Elenco procedimenti' + (n ? ' · ' + n + ' novità' : '');
+    const b = pannello && pannello.querySelector('[data-nv]'); if (b) b.textContent = 'Novità' + (n ? ' (' + n + ')' : '');
+  }
+  // riquadro nella home del PDP, finché ci sono novità da leggere
+  function homeCard() {
+    const vecchio = document.getElementById('pstNovitaHome'); if (vecchio) vecchio.remove();
+    if (!/\/home\/?$/.test(location.pathname) || !document.body) return;
+    const n = nvNonLette().length, s = nvLeggi();
+    if (!n && !s.ultimo) return;
+    const c = h('div', 'position:fixed;top:64px;right:12px;width:380px;max-height:70vh;overflow:auto;z-index:2147483640;background:#fff;color:#111;border:1px solid #889;border-radius:8px;box-shadow:0 3px 16px rgba(0,0,0,.3);padding:10px 12px;font:13px sans-serif');
+    c.id = 'pstNovitaHome';
+    const t = h('div', 'display:flex;gap:8px;align-items:center;flex-wrap:wrap');
+    t.appendChild(h('strong', 'font-size:15px', 'Novità sui fascicoli' + (n ? ' (' + n + ')' : '')));
+    t.appendChild(pulsante('Controlla ora', () => controllaNovita(true), 'cursor:pointer;padding:1px 8px;font-size:12px;margin-left:auto'));
+    c.appendChild(t);
+    if (n) { const b = h('div', 'margin:4px 0'); b.appendChild(pulsante('Segna tutte come lette', () => segna('tutte', true), 'cursor:pointer;padding:1px 8px;font-size:12px')); c.appendChild(b); }
+    renderNovita(c, true);
+    c.appendChild(h('div', 'color:#889;font-size:11px;margin-top:4px', 'Ultimo controllo: ' + (s.ultimo ? new Date(s.ultimo).toLocaleString('it-IT') : 'mai')));
+    document.body.appendChild(c);
   }
 
   // ---------- scheda del procedimento ----------
@@ -608,6 +813,34 @@
     corr.forEach(u => { m[chiaveUd(u)] = u; });
     st[id] = m; LS.set('pstPdpUdienze', st);
   }
+
+  // soggetti ed esiti dello Stato (sentenze, provvedimenti): il portale li invia nella risposta /stato e in quella dello storico
+  const RX_ESITO = /sentenz|esit|dispositiv|provvedim|condann|assoluz|pena|decision|deliber|ordinanz|decreto/i;
+  function soggettiStato(id) {
+    const out = [];
+    for (const v of vociDi(id, 'stato')) { const it = v.risp && v.risp.result && v.risp.result.item; if (it && it.soggetti && !vuoto(it.soggetti)) out.push(it.soggetti); }
+    return out;
+  }
+  function cercaEsiti(id) {
+    const out = [], visti = new Set();
+    const giu = (v, pre) => {
+      if (Array.isArray(v)) v.forEach((x, i) => giu(x, pre + '[' + (i + 1) + ']'));
+      else if (v && typeof v === 'object') Object.keys(v).forEach(k => giu(v[k], pre ? pre + '.' + k : k));
+      else if (v != null && v !== '' && RX_ESITO.test(pre.split('.').pop().replace(/\[\d+\]/g, ''))) { const c = pre + '=' + v; if (!visti.has(c)) { visti.add(c); out.push([etichetta(pre), valore(v)]); } }
+    };
+    for (const v of vociDi(id, 'stato')) { const r = corpoDi(v.risp); if (r && typeof r === 'object') { const c = Object.assign({}, r); delete c.soggetti; giu(c, ''); } }
+    return out;
+  }
+  function renderEsiti(id) {
+    const w = h('div');
+    const sg = soggettiStato(id), es = cercaEsiti(id);
+    w.appendChild(h('div', 'font-weight:600;margin:16px 0 6px', 'Soggetti, esiti e sentenze'));
+    if (es.length) { w.appendChild(h('div', 'color:#667;font-size:12px;margin-bottom:4px', 'Campi della risposta del portale che riguardano esiti, sentenze o provvedimenti.')); w.appendChild(coppie(es)); }
+    if (sg.length) sg.forEach(x => { const b = h('div', 'border:1px solid #d5d9e6;border-radius:8px;padding:8px 14px;margin-top:6px'); b.appendChild(albero(x)); w.appendChild(b); });
+    if (!es.length && !sg.length) w.appendChild(h('div', 'color:#667', 'Per questo procedimento il portale non restituisce soggetti o esiti nello Stato. Se la pagina originale mostra sentenze, premi “Salva struttura dati” e mandami il file.'));
+    return w;
+  }
+
   function tabellaDati(colonne, righe, perRiga) {
     const t = h('table', 'border-collapse:collapse;width:100%;font-size:13px');
     const hr = t.createTHead().insertRow();
@@ -620,11 +853,12 @@
     if (!ud.length) return h('div', 'color:#667;padding:8px 0', 'Nessuna udienza fissata.');
     const oggi = new Date().toISOString().slice(0, 10);
     const v = ud.slice().sort((a, b) => String(b.data).localeCompare(String(a.data)));
-    return tabellaDati(['Data', 'Aula', 'Ufficio', 'Sezione', 'Causale'], v, (tb, u) => {
+    const extra = []; v.forEach(u => Object.keys(u).forEach(k => { if (RX_ESITO.test(k) && !vuoto(u[k]) && typeof u[k] !== 'object' && extra.indexOf(k) < 0) extra.push(k); }));
+    return tabellaDati(['Data', 'Aula', 'Ufficio', 'Sezione', 'Causale'].concat(extra.map(umano)), v, (tb, u) => {
       const tr = tb.insertRow(); tr.style.borderBottom = '1px solid #e3e3ea';
       const futura = String(u.data).slice(0, 10) >= oggi;
       if (futura) tr.style.background = '#f1f7ee';
-      [fmtDT(u.data) + (futura ? '  · in programma' : u._solo ? '  · dallo storico locale' : ''), u.aula, [u.descrizioneTipoUfficioAmbito, u.descrizioneCircondario].filter(Boolean).join(' · '), u.descrizioneSezione, u.descrizioneCausale].forEach((t, i) => {
+      [fmtDT(u.data) + (futura ? '  · in programma' : u._solo ? '  · dallo storico locale' : ''), u.aula, [u.descrizioneTipoUfficioAmbito, u.descrizioneCircondario].filter(Boolean).join(' · '), u.descrizioneSezione, u.descrizioneCausale].concat(extra.map(k => vuoto(u[k]) ? '' : valore(u[k]))).forEach((t, i) => {
         const td = tr.insertCell(); td.style.padding = '5px 8px'; td.textContent = t || ''; if (i === 0 && futura) td.style.fontWeight = '600';
       });
     });
@@ -718,7 +952,7 @@
       if (c && c.voci.length) {
         const ud = sez === 'stato' ? udienzeDi(id) : null;
         if (sez === 'stato') { w.appendChild(h('div', 'font-weight:600;margin:6px 0', 'Udienze'));
-          w.appendChild(h('div', 'color:#667;font-size:12px;margin-bottom:6px', 'Udienze fissate e storico udienze del portale. Quelle già lette in precedenza restano anche in questo browser.')); w.appendChild(ud ? renderUdienze(ud) : h('div', 'color:#667', 'Il portale non ha restituito l’elenco delle udienze.')); }
+          w.appendChild(h('div', 'color:#667;font-size:12px;margin-bottom:6px', 'Udienze fissate e storico udienze del portale. Quelle già lette in precedenza restano anche in questo browser.')); w.appendChild(ud ? renderUdienze(ud) : h('div', 'color:#667', 'Il portale non ha restituito l’elenco delle udienze.')); w.appendChild(renderEsiti(id)); }
         if (sez === 'depositi') w.appendChild(renderDepositi(depositiDi(id)));
         const dt = h('details', 'margin-top:16px'); dt.appendChild(h('summary', 'cursor:pointer;color:#445', 'Risposte complete del portale (' + c.voci.length + ' chiamate)'));
         w.appendChild(dt);
@@ -847,7 +1081,7 @@
   }
 
   function costruisci() {
-    const bt = document.createElement('button');
+    const bt = document.createElement('button'); btnApri = bt;
     bt.textContent = 'Elenco procedimenti';
     bt.style.cssText = 'position:fixed;left:8px;bottom:40px;z-index:2147483645;padding:4px 8px;font:12px sans-serif;cursor:pointer;opacity:.85';
     bt.addEventListener('click', () => (aperto ? chiudi() : apri()));
@@ -860,7 +1094,7 @@
       '<strong>Procedimenti autorizzati</strong>' +
       '<input data-q type="search" placeholder="Cerca in tutte le colonne" style="padding:3px 6px;min-width:260px">' +
       '<label><input data-n type="checkbox"> nascondi definiti e archiviati</label>' +
-      '<button data-a>Aggiorna</button><button data-t>Carica tutti i nomi</button><button data-s>Esporta CSV</button><button data-v>Svuota copia locale</button>' +
+      '<button data-nv>Novità</button><button data-a>Aggiorna</button><button data-t>Carica tutti i nomi</button><button data-s>Esporta CSV</button><button data-v>Svuota copia locale</button>' +
       '<button data-x style="margin-left:auto">Chiudi</button></div>' +
       '<div data-c style="margin-bottom:4px"></div><div data-d style="color:#888;font-size:11px;margin-bottom:4px"></div><div data-m style="color:#a00;margin-bottom:4px"></div>' +
       '<table style="border-collapse:collapse;width:100%"></table></div><div data-sc style="display:none"></div>';
@@ -870,11 +1104,18 @@
     pannello.querySelector('[data-q]').addEventListener('input', disegna);
     pannello.querySelector('[data-n]').addEventListener('change', disegna);
     pannello.querySelector('[data-a]').addEventListener('click', aggiorna);
+    pannello.querySelector('[data-nv]').addEventListener('click', () => { vista = { tipo: 'novita' }; SS.set('pstPdpVista', vista); disegna(); pannello.scrollTop = 0; });
     pannello.querySelector('[data-s]').addEventListener('click', csv);
     pannello.querySelector('[data-t]').addEventListener('click', tutti);
     pannello.querySelector('[data-x]').addEventListener('click', chiudi);
     pannello.querySelector('[data-v]').addEventListener('click', () => { MEM.el = null; MEM.sez = {}; vista = { tipo: 'elenco' }; SS.del('pstPdpVista'); SS.del('pstPdpSez'); SS.del('pstPdpSogg'); SS.del('pstPdpElenco'); SS.del('pstPdpFiltro'); SS.del('pstPdpNomi'); disegna(); });
-    document.addEventListener('keydown', e => { if (e.key === 'Escape' && aperto) { if (vista.tipo === 'scheda') tornaElenco(); else chiudi(); } });
+    document.addEventListener('keydown', e => { if (e.key === 'Escape' && aperto) { if (vista.tipo !== 'elenco') tornaElenco(); else chiudi(); } });
   }
-  if (document.body) costruisci(); else document.addEventListener('DOMContentLoaded', costruisci);
+  function avvia() {
+    costruisci(); nvBadge(); homeCard();
+    let ultimo = location.pathname;
+    setTimeout(avvioAutomatico, 5000);
+    setInterval(() => { if (location.pathname !== ultimo) { ultimo = location.pathname; homeCard(); if (/\/home\/?$/.test(ultimo)) setTimeout(avvioAutomatico, 4000); } }, 1500);
+  }
+  if (document.body) avvia(); else document.addEventListener('DOMContentLoaded', avvia);
 })();
