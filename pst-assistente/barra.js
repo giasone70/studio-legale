@@ -11,8 +11,10 @@
   // la scelta di ufficio, registro e ruolo si rifà a ogni accesso: la esegue lo script nella pagina di scelta
   function vaiCassazione() {
     ss.set('pstCassAuto', '1');
-    ss.del('pstCassPassi');
-    location.href = BASE + 'it/pst_2_9.wp';
+    ss.del('pstCassPassi'); ss.del('pstCassRiparti');
+    // se l’indirizzo diretto dei ricorsi è già noto (imparato una volta), si va lì; altrimenti si ripete la scelta
+    let u = null; try { u = JSON.parse(localStorage.getItem('pstExt_cassUrl')); } catch (e) {}
+    location.href = (u && /pst_2_9_1_2\.wp\?/.test(u)) ? u : BASE + 'it/pst_2_9.wp';
   }
 
   // Il PDP è un’applicazione a pagina unica: si entra dalla home e poi si usa il suo menu.
