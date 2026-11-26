@@ -69,6 +69,41 @@
     }]
   ];
 
+  // Diagnostica della Cassazione: indipendente da cassazione.js, così funziona anche se quello script non parte
+  function diagnosticaCassazione() {
+    const chiavi = n => { try { return [...new URLSearchParams(n).keys()].join('&'); } catch (e) { return ''; } };
+    const rel = u => { try { const x = new URL(u, location.href); return x.host + x.pathname + (x.search ? '?' + chiavi(x.search) : ''); } catch (e) { return String(u).slice(0, 80); } };
+    let log = []; try { log = JSON.parse(ss.get('pstCassLog') || '[]'); } catch (e) {}
+    const stato = {}; for (const k of ['pstCassAuto', 'pstCassPassi', 'pstCassTot', 'pstCassRiparti', 'pstCassConfermato', 'pstCassEsito']) stato[k] = ss.get(k);
+    let url = null; try { url = JSON.parse(localStorage.getItem('pstExt_cassUrl')); } catch (e) {}
+    const foto = {
+      pagina: rel(location.href), titolo: document.title,
+      scriptCassazione: window.__pstCass ? 'attivo (' + window.__pstCass + ')' : 'NON attivo in questa pagina',
+      riquadroGiallo: document.getElementById('pstBanda') ? 'presente' : 'assente',
+      riquadriInterni: [...document.querySelectorAll('iframe, frame')].map(f => rel(f.getAttribute('src') || '(senza indirizzo)')),
+      tendine: [...document.querySelectorAll('select')].map(s => (s.id || s.name) + ' = «' + (s.options[s.selectedIndex] ? s.options[s.selectedIndex].textContent.trim() : '') + '» su ' + s.options.length + ' voci: ' + [...s.options].slice(0, 12).map(o => o.textContent.trim()).join(' / ')),
+      pulsanti: [...document.querySelectorAll('input[type="submit"], input[type="button"], button')].filter(b => !bar.contains(b)).map(b => (b.name || b.id || '') + '=' + (b.value || b.textContent || '').trim().slice(0, 40)).slice(0, 20),
+      moduli: [...document.forms].map(m => (m.method || 'get') + ' ' + rel(m.getAttribute('action') || '')),
+      collegamenti: [...document.querySelectorAll('a[href*="pst_2_9"]')].map(a => rel(a.href) + ' «' + a.textContent.trim().slice(0, 30) + '»').slice(0, 15),
+      messaggi: [...document.querySelectorAll('.portlet-msg-error, .portlet-msg-alert, .portlet-msg-info, .alert, .error, .errore, .errorMessage, .actionError, .actionMessage, [role="alert"]')].map(e => e.textContent.replace(/\s+/g, ' ').trim().slice(0, 200)).filter(Boolean).slice(0, 5),
+      memoria: stato, indirizzoRicorsiImparato: url ? rel(url) : null
+    };
+    const testo = 'PST assistente v' + (window.__pstVersione || '?') + ' · diagnostica Cassazione · ' + new Date().toLocaleString('it-IT') + '\n\n' +
+      (log.length ? log.map(v => v.ora + ' [' + v.pag + '] ' + v.t + (v.x ? '\n    ' + JSON.stringify(v.x) : '')).join('\n') : '(registro dei passaggi vuoto)') +
+      '\n\n' + JSON.stringify(foto, null, 1);
+    let p = document.getElementById('pstDiagCass'); if (p) p.remove();
+    p = document.createElement('div'); p.id = 'pstDiagCass';
+    p.style.cssText = 'position:fixed;left:8px;right:8px;bottom:44px;max-height:60vh;z-index:2147483647;background:#fffbe6;border:1px solid #d9c36b;box-shadow:0 3px 14px rgba(0,0,0,.3);padding:8px;font:12px sans-serif;display:flex;flex-direction:column;gap:6px';
+    const ta = document.createElement('textarea'); ta.value = testo; ta.readOnly = true; ta.style.cssText = 'width:100%;height:40vh;font:11px monospace';
+    const az = document.createElement('div'); az.style.cssText = 'display:flex;gap:6px';
+    const c = document.createElement('button'); c.textContent = 'Copia negli appunti';
+    c.addEventListener('click', async () => { let ok = false; try { await navigator.clipboard.writeText(testo); ok = true; } catch (e) { ta.select(); try { ok = document.execCommand('copy'); } catch (e2) {} } c.textContent = ok ? 'Copiata' : 'Seleziona il testo e copialo a mano'; });
+    const x = document.createElement('button'); x.textContent = 'Chiudi'; x.addEventListener('click', () => p.remove());
+    az.append(c, x); p.append(az, ta);
+    document.documentElement.appendChild(p);
+  }
+  if (location.pathname.indexOf('/PST/it/') === 0) voci.splice(1, 0, ['Diagnostica Cassazione', diagnosticaCassazione]);
+
   const bar = document.createElement('div');
   bar.style.cssText = 'position:fixed;left:50%;bottom:6px;transform:translateX(-50%);z-index:2147483646;' +
     'display:flex;gap:4px;padding:3px 6px;background:rgba(30,40,60,.85);border-radius:6px;font:12px sans-serif';

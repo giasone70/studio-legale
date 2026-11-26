@@ -199,7 +199,7 @@
           if (x.status !== 200) return;
           letto = true;
           const r = x.responseType === 'json' ? x.response : JSON.parse(x.responseText);
-          if (altra) { try { reatiDaRisposta(x.__pu, typeof b === 'string' ? b : null, r); } catch (e) {} apprendi(x.__pm, x.__pu, typeof b === 'string' ? b : null, r, x.__hd); return; }
+          if (altra) { apprendi(x.__pm, x.__pu, typeof b === 'string' ? b : null, r, x.__hd); return; }
           const items = r && r.result && r.result.items;
           if (!Array.isArray(items)) { D.errore = 'risposta senza elenco'; return; }
           D.risposte++;
@@ -375,16 +375,6 @@
     }
     return [...new Set(out)];
   }
-  // reati letti da altre risposte del portale (dettaglio aperto dall’applicazione) o dalla colonna dell’elenco originale
-  const reatiExtra = id => { const a = (SS.get('pstPdpReati') || {})[id] || [], b = (SS.get('pstPdpReatiDom') || {})[id]; return a.concat(b ? [b] : []); };
-  function reatiDaRisposta(u, corpo, risp) {
-    const el = leggiElenco(); if (!el) return;
-    const r = reatiIn(risp); if (!r.length) return;
-    let url = ''; try { const x = new URL(u, location.href); url = x.pathname + x.search; } catch (e) {}
-    const id = Object.keys(el.items).find(k => contiene(url, k) || contiene(corpo, k));
-    if (!id) return;
-    const m = SS.get('pstPdpReati') || {}; m[id] = r; SS.set('pstPdpReati', m);
-  }
   // righe dell’elenco originale: selettore preciso e, in mancanza, qualsiasi riga di tabella PrimeNG con le iniziali dei soggetti
   const SEL_LISTA = 'app-procedimenti-view tbody.ui-table-tbody > tr.ui-selectable-row';
   const righeLista = () => {
@@ -399,20 +389,6 @@
     const cand = Object.values(el.items).filter(it => (it.iscrizioniRegistro || []).some(i => i.numero != null && new RegExp('(^|\\D)' + i.numero + '\\s*/\\s*' + i.anno + '(\\D|$)').test(t)));
     if (cand.length < 2) return cand[0] || null;
     return cand.find(it => (it.iscrizioniRegistro || []).some(i => i.ufficio && i.ufficio.ufficio && t.indexOf(i.ufficio.ufficio) >= 0)) || cand[0];
-  }
-  function leggiReatiDom() {
-    const righe = righeLista(); if (!righe.length) return;
-    const tab = righe[0].closest('table'), th = tab && tab.tHead ? Array.from(tab.tHead.rows[0].cells) : [];
-    const i = th.findIndex(c => /reat|imputaz/i.test(c.textContent || ''));
-    D.colReati = i >= 0 ? 'colonna ' + (i + 1) : 'nessuna colonna “reati” nell’elenco originale';
-    if (i < 0) return;
-    const m = SS.get('pstPdpReatiDom') || {}; let n = 0;
-    for (const tr of righe) {
-      const c = tr.cells[i], it = c && itemDiRiga(tr);
-      const t = c ? c.textContent.replace(/\s+/g, ' ').trim() : '';
-      if (it && t && m[it.identificativo] !== t) { m[it.identificativo] = t; n++; }
-    }
-    if (n) { SS.set('pstPdpReatiDom', m); if (aperto && !caricando) disegna(); }
   }
   const rottaLista = lista => {
     if (lista === 'attivi') return PERC + 'procedimenti-autorizzati';
@@ -434,17 +410,11 @@
   function riga(it, nomiTutti) {
     const isc = it.iscrizioniRegistro || [];
     const nomiR = (nomiTutti || {})[it.identificativo] || {};
-    const sogg = (it.inizialiSoggetti || []).map(s => ({ sid: s.identificativo, rid: s.idRegeWeb, abbr: s.abbreviazione || '', parte: s.descrizioneTipoParte || '', reati: reatiIn(s) }));
+    const sogg = (it.inizialiSoggetti || []).map(s => ({ sid: s.identificativo, rid: s.idRegeWeb, abbr: s.abbreviazione || '', parte: s.descrizioneTipoParte || '', }));
     const nomiDi = s => nomiR[s.sid] || nomiR[String(s.rid)] || [];
     const magDi = i => { const m = i.magistrato || {}; return m.nominativo || [m.nome, m.cognome].filter(Boolean).join(' '); };
     // una riga per iscrizione: numero, ufficio e magistrato restano allineati
-    const linee = isc.map(i => ({ reg: ((i.codiceTipoRegistro || '') + ' ' + i.numero + '/' + i.anno).trim(), uff: (i.ufficio && i.ufficio.ufficio) || '', mag: magDi(i), reati: reatiIn(i) }));
-    // reati: per iscrizione, per soggetto e del procedimento; con più gruppi si indica a chi si riferiscono
-    const reati = [];
-    const conIsc = linee.filter(l => l.reati.length), conSog = sogg.filter(x => x.reati.length);
-    conIsc.forEach(l => l.reati.forEach(t => reati.push(conIsc.length > 1 || linee.length > 1 ? l.reg + ': ' + t : t)));
-    conSog.forEach(x => x.reati.forEach(t => reati.push(conSog.length > 1 ? x.abbr + ': ' + t : t)));
-    reatiIn(it, ['iscrizioniRegistro', 'inizialiSoggetti']).concat(reatiExtra(it.identificativo)).forEach(t => reati.push(t));
+    const linee = isc.map(i => ({ reg: ((i.codiceTipoRegistro || '') + ' ' + i.numero + '/' + i.anno).trim(), uff: (i.ufficio && i.ufficio.ufficio) || '', mag: magDi(i) }));
     const primo = isc[0] || {};
     const nomiTesto = sogg.map(x => nomiDi(x).join(', ')).filter(Boolean).concat(nomiR['*'] || []);
     return {
@@ -453,7 +423,6 @@
       chiave: (Number(primo.anno) || 0) * 1e7 + (Number(primo.numero) || 0),
       ufficio: unici(linee.map(l => l.uff)).join(' | '),
       magistrato: unici(linee.map(l => l.mag)).join(' | '),
-      reati: unici(reati),
       soggetti: sogg.map(x => x.abbr + (x.parte ? ' (' + x.parte + ')' : '') + (nomiDi(x).length ? ': ' + nomiDi(x).join(', ') : '')).join('; ') + (nomiR['*'] ? ' – ' + nomiR['*'].join(', ') : ''),
       nomiTesto,
       sogg, nomiR, nomiDi,
@@ -471,7 +440,6 @@
     ['iniziali', 'Iniziali', r => r.sogg.map(x => x.abbr).join(' ').toLowerCase(), 'sog', r => r.sogg.map(x => x.abbr)],
     ['nome', 'Nome', r => (r.nomiTesto.join(' ') || '~').toLowerCase(), 'sog', r => r.sogg.map(x => r.nomiDi(x).join(', '))],
     ['ruolo', 'Ruolo', r => r.sogg.map(x => x.parte).join(' ').toLowerCase(), 'sog', r => r.sogg.map(x => x.parte)],
-    ['reati', 'Reati contestati', r => (r.reati.join(' ') || '~').toLowerCase(), 'proc', r => r.reati],
     ['nomina', 'Nomina', r => iso(r.nomina), 'proc', r => [r.nomina]],
     ['stato', 'Stato', r => r.stato.toLowerCase(), 'proc', r => [r.stato]],
     ['iter', 'Iter', r => r.iter.toLowerCase(), 'proc', r => [r.iter]]
@@ -497,17 +465,7 @@
   }
   function diag() {
     if (!pannello) return;
-    pannello.querySelector('[data-d]').textContent = 'Diagnostica · chiamate viste: ' + D.xhr + ' · elenchi intercettati: ' + D.lista + ' · risposte lette: ' + D.risposte + ' · procedimenti in memoria: ' + D.elementi + ' · ultima POST: ' + (D.post || '-') + (D.errore ? ' · errore: ' + D.errore : '') + ' · richiesta salvata: ' + (LS.get('pstPdpModelli') ? 'sì' : 'no') + ' · aggiornamento: ' + (D.agg || '-') + ' · nomi: ' + (D.nomi || '-') + ' · indirizzo API: ' + (D.host || '-') + (D.det ? ' · dettaglio: ' + D.det : '') + ' · reati: ' + infoReati() + ' · richiesta nomi: ' + (() => { const t = LS.get('pstPdpTemplNomi'); return t ? t.metodo + ' ' + t.url : 'non appresa'; })();
-  }
-  // se i reati non si trovano, la diagnostica elenca i nomi dei campi (mai i valori) per capire dove il portale li mette
-  function infoReati() {
-    const el = leggiElenco(); if (!el) return '-';
-    const items = Object.values(el.items); if (!items.length) return '-';
-    const n = items.filter(it => riga(it, null).reati.length).length;
-    if (n) return n + '/' + items.length + ' procedimenti' + (D.colReati ? ' (' + D.colReati + ')' : '');
-    const k = o => o && typeof o === 'object' ? Object.keys(o).join(',') : '-';
-    const it = items[0];
-    return 'non trovati' + (D.colReati ? ' (' + D.colReati + ')' : '') + ' · campi elemento: ' + k(it) + ' · campi iscrizione: ' + k((it.iscrizioniRegistro || [])[0]) + ' · campi soggetto: ' + k((it.inizialiSoggetti || [])[0]);
+    pannello.querySelector('[data-d]').textContent = 'Diagnostica · chiamate viste: ' + D.xhr + ' · elenchi intercettati: ' + D.lista + ' · risposte lette: ' + D.risposte + ' · procedimenti in memoria: ' + D.elementi + ' · ultima POST: ' + (D.post || '-') + (D.errore ? ' · errore: ' + D.errore : '') + ' · richiesta salvata: ' + (LS.get('pstPdpModelli') ? 'sì' : 'no') + ' · aggiornamento: ' + (D.agg || '-') + ' · nomi: ' + (D.nomi || '-') + ' · indirizzo API: ' + (D.host || '-') + (D.det ? ' · dettaglio: ' + D.det : '') + ' · richiesta nomi: ' + (() => { const t = LS.get('pstPdpTemplNomi'); return t ? t.metodo + ' ' + t.url : 'non appresa'; })();
   }
   function disegnaInt() {
     if (!pannello) return;
@@ -520,7 +478,7 @@
     LS.set('pstPdpNascondi', nascondi);
     const ord = LS.get('pstPdpOrd') || { c: 'nomina', d: -1 };
     const col = COLONNE.find(c => c[0] === ord.c) || COLONNE.find(c => c[0] === 'nomina');
-    let v = tutte.filter(r => (!nascondi || !r.chiusa) && (!q || [r.registro, r.linee.map(l => l.uff + ' ' + l.mag).join(' '), r.soggetti, r.nomiTesto.join(' '), r.reati.join(' '), r.nomina, r.stato, r.iter].join(' ').toLowerCase().includes(q)));
+    let v = tutte.filter(r => (!nascondi || !r.chiusa) && (!q || [r.registro, r.linee.map(l => l.uff + ' ' + l.mag).join(' '), r.soggetti, r.nomiTesto.join(' '), r.nomina, r.stato, r.iter].join(' ').toLowerCase().includes(q)));
     v.sort((a, b) => { const x = col[2](a), y = col[2](b); return (x < y ? -1 : x > y ? 1 : 0) * ord.d; });
     pannello.querySelector('[data-c]').textContent = v.length + ' di ' + tutte.length + ' procedimenti' +
       (el && el.aggiornato ? ' · dati del ' + new Date(el.aggiornato).toLocaleString('it-IT') : '');
@@ -557,11 +515,7 @@
           const td = tr.insertCell(); td.style.cssText = TD;
           if (c[3] === 'proc') {
             td.rowSpan = k;
-            if (c[0] === 'reati') {
-              td.style.minWidth = '180px';
-              if (!r.reati.length) td.appendChild(h('span', 'color:#aab', '—'));
-              r.reati.forEach(x => td.appendChild(h('div', 'margin-bottom:2px', x)));
-            } else td.textContent = c[4](r)[0];
+            td.textContent = c[4](r)[0];
             continue;
           }
           if (c[3] === 'isc') {
@@ -1013,12 +967,6 @@
     }
     return out;
   }
-  // reati del soggetto (o dell’oggetto stesso); in mancanza quelli del procedimento, segnalati come tali
-  function reatiPer(x, r) {
-    const a = reatiIn(x.o); if (a.length) return a.join('; ');
-    const b = x.so ? reatiIn(x.so) : []; if (b.length) return b.join('; ');
-    return r && r.reati.length ? r.reati.join('; ') + ' (del procedimento)' : '';
-  }
   // tabella generica: colonne fisse più tutti i campi semplici degli oggetti; clic su una riga per vedere ogni dato
   function tabellaOggetti(lista, fisse, saltaCampi) {
     const extra = [];
@@ -1035,17 +983,48 @@
       });
     });
   }
-  function renderSentenze(id, r) {
+  // reati della sentenza: prima nell’oggetto della sentenza, poi nel soggetto (escluse le altre sentenze)
+  function reatiSentenza(x) {
+    const a = reatiIn(x.o); if (a.length) return a;
+    if (!x.so) return [];
+    const escl = Object.keys(x.so).filter(k => { const v = x.so[k]; const l = Array.isArray(v) ? v : [v]; return l.some(e => e && typeof e === 'object' && ('numeroSentenza' in e || 'annoSentenza' in e)); });
+    return reatiIn(x.so, escl);
+  }
+  function renderSentenze(id) {
     const w = h('div');
     const sg = soggettiStato(id), es = cercaEsiti(id);
-    const sent = trovaOggetti(sg, o => ('numeroSentenza' in o || 'annoSentenza' in o || 'codiceGrado' in o), '', []);
+    const trovate = trovaOggetti(sg, o => ('numeroSentenza' in o || 'annoSentenza' in o || 'codiceGrado' in o), '', []);
     const DATE = [['dataPrevistoDeposito', 'Deposito previsto'], ['dataProrogaSentenza', 'Deposito prorogato'], ['dataDepositoSentenza', 'Depositata il'], ['dataIrrevocabilita', 'Irrevocabile dal']];
+    // la stessa sentenza può riguardare più soggetti: una sola riga, con i soggetti e i rispettivi reati
+    const per = {};
+    for (const x of trovate) {
+      const k = [x.o.codiceGrado, x.o.numeroSentenza, x.o.annoSentenza, x.o.dataDepositoSentenza].join('|');
+      const g = per[k] = per[k] || { o: Object.assign({}, x.o), sogg: [], reati: [] };
+      const ru = x.so ? ruoloOgg(x.so) : '';
+      g.sogg.push(x.s + (ru ? ' (' + ru + ')' : ''));
+      const re = reatiSentenza(x);
+      if (re.length) g.reati.push({ s: x.s, l: re });
+      for (const d of DATE) if (!g.o[d[0]] && x.o[d[0]]) g.o[d[0]] = x.o[d[0]];
+    }
+    const data = o => String(o.dataDepositoSentenza || o.dataPrevistoDeposito || o.dataIrrevocabilita || '');
+    const sent = Object.values(per).sort((a, b) => (Number(a.o.annoSentenza) || 0) - (Number(b.o.annoSentenza) || 0) || (Number(a.o.numeroSentenza) || 0) - (Number(b.o.numeroSentenza) || 0) || data(a.o).localeCompare(data(b.o)));
+    sent.forEach(g => {
+      const tutte = g.reati.map(x => x.l.join('; '));
+      g.testoReati = !g.reati.length ? '' : tutte.every(t => t === tutte[0]) ? tutte[0] : g.reati.map(x => x.s + ': ' + x.l.join('; ')).join('\n');
+      g.s = unici(g.sogg).join('\n');
+    });
     if (sent.length) {
-      w.appendChild(h('div', 'color:#667;font-size:12px;margin-bottom:6px', sent.length + ' sentenze · clic su una riga per tutti i dati'));
-      w.appendChild(tabellaOggetti(sent, [
-        ['Soggetto', x => x.s], ['Ruolo', x => x.so ? ruoloOgg(x.so) : ''], ['Reati contestati', x => reatiPer(x, r)],
-        ['Grado', x => x.o.codiceGrado], ['Sentenza n.', x => x.o.numeroSentenza], ['Anno', x => x.o.annoSentenza]
-      ].concat(DATE.map(d => [d[1], x => x.o[d[0]] ? fmtDT(x.o[d[0]]) : ''])), ['numeroSentenza', 'annoSentenza', 'codiceGrado'].concat(DATE.map(d => d[0]))));
+      w.appendChild(h('div', 'color:#667;font-size:12px;margin-bottom:6px', sent.length + ' sentenze · per anno, numero e data · clic su una riga per tutti i dati'));
+      const t = tabellaOggetti(sent, [
+        ['Anno', x => x.o.annoSentenza], ['Sentenza n.', x => x.o.numeroSentenza], ['Grado', x => x.o.codiceGrado]
+      ].concat(DATE.map(d => [d[1], x => x.o[d[0]] ? fmtDT(x.o[d[0]]) : ''])).concat([['Reati contestati', x => x.testoReati || '—'], ['Soggetti', x => x.s]]),
+      ['numeroSentenza', 'annoSentenza', 'codiceGrado'].concat(DATE.map(d => d[0])));
+      t.querySelectorAll('td').forEach(td => { td.style.whiteSpace = 'pre-line'; });
+      w.appendChild(t);
+      if (!sent.some(g => g.reati.length)) {
+        const k = o => o && typeof o === 'object' ? Object.keys(o).join(', ') : '-';
+        w.appendChild(h('div', 'color:#a60;font-size:12px;margin-top:6px', 'Reati non riconosciuti nei dati della sentenza. Campi della sentenza: ' + k(trovate[0].o) + ' · campi del soggetto: ' + k(trovate[0].so)));
+      }
     } else w.appendChild(h('div', 'color:#667;padding:6px 0', sg.length ? 'Nessuna sentenza registrata per i soggetti di questo procedimento.' : 'Il portale non restituisce l’elenco dei soggetti nello Stato di questo procedimento.'));
     if (es.length) { w.appendChild(h('div', 'font-weight:600;margin:14px 0 4px', 'Altri campi su esiti e provvedimenti')); w.appendChild(coppie(es)); }
     if (sg.length) {
@@ -1062,7 +1041,7 @@
     if (imp.length) {
       w.appendChild(h('div', 'color:#667;font-size:12px;margin-bottom:6px', imp.length + ' impugnazioni · clic su una riga per tutti i dati'));
       w.appendChild(tabellaOggetti(imp, [
-        ['Soggetto', x => x.s], ['Ruolo', x => x.so ? ruoloOgg(x.so) : ''], ['Reati contestati', x => reatiPer(x, r)],
+        ['Soggetto', x => x.s], ['Ruolo', x => x.so ? ruoloOgg(x.so) : ''],
         ['Sentenza impugnata', x => { const z = x.o.numeroSentenza ? x.o : x.sent; return z && z.numeroSentenza ? z.numeroSentenza + (z.annoSentenza ? '/' + z.annoSentenza : '') + (z.codiceGrado ? ' (grado ' + z.codiceGrado + ')' : '') : ''; }]
       ], ['numeroSentenza', 'annoSentenza']));
     } else w.appendChild(h('div', 'color:#667;padding:6px 0', sg.length ? 'Nessuna impugnazione registrata per i soggetti di questo procedimento.' : 'Il portale non restituisce l’elenco dei soggetti nello Stato di questo procedimento.'));
@@ -1129,7 +1108,7 @@
       w.appendChild(tiles);
       const url = it.urlDisponibilitaAtti ? (() => { const a = h('a', 'color:#14c', it.urlDisponibilitaAtti); a.href = it.urlDisponibilitaAtti; a.target = '_blank'; a.rel = 'noopener'; return a; })() : null;
       w.appendChild(coppie([
-        ['Stato del procedimento', r.stato], ['Reati contestati', r.reati.length ? r.reati.join('; ') : null], ['Iter', it.descrizioneIter ? it.descrizioneIter + (it.codiceIter ? ' (' + it.codiceIter + ')' : '') : null],
+        ['Stato del procedimento', r.stato], ['Iter', it.descrizioneIter ? it.descrizioneIter + (it.codiceIter ? ' (' + it.codiceIter + ')' : '') : null],
         ['Data di nomina', fmtDT(it.dataNomina)], ['Data di definizione', fmtDT(it.dataDefinizione)], ['Ruolo del difensore', it.codiceTipoLegale],
         ['Avvocatura', it.descrizioneAvvocatura], ['Accesso agli atti', [it.descrizioneStatoAccessoAtti, it.codiceStatoAccessoAtti != null ? 'codice ' + it.codiceStatoAccessoAtti : ''].filter(Boolean).join(' · ')],
         ['Atti disponibili fino al', fmtDT(it.dataScadenzaDisponibilitaAtti)], ['Indirizzo per gli atti', url],
@@ -1187,7 +1166,7 @@
           w.appendChild(h('div', 'color:#667;font-size:12px;margin-bottom:6px', 'Udienze fissate e storico udienze del portale. Quelle già lette in precedenza restano anche in questo browser.'));
           w.appendChild(ud ? renderUdienze(ud) : h('div', 'color:#667', 'Il portale non ha restituito l’elenco delle udienze.'));
         }
-        if (sez === 'sentenze') w.appendChild(renderSentenze(id, r));
+        if (sez === 'sentenze') w.appendChild(renderSentenze(id));
         if (sez === 'impugnazioni') w.appendChild(renderImpugnazioni(id, r));
         if (sez === 'depositi') w.appendChild(renderDepositi(depositiDi(id)));
         const dt = h('details', 'margin-top:16px'); dt.appendChild(h('summary', 'cursor:pointer;color:#445', 'Risposte complete del portale (' + c.voci.length + ' chiamate)'));
@@ -1282,7 +1261,6 @@
         let pagina = 1;
         while (inCorso) {
           pagine++;
-          leggiReatiDom();
           for (const r of righeLista()) {
             if (!inCorso) break;
             const it = itemDiRiga(r);
@@ -1373,14 +1351,14 @@
     pannello.querySelector('[data-s]').addEventListener('click', csv);
     pannello.querySelector('[data-t]').addEventListener('click', tutti);
     pannello.querySelector('[data-x]').addEventListener('click', chiudi);
-    pannello.querySelector('[data-v]').addEventListener('click', () => { MEM.el = null; MEM.sez = {}; vista = { tipo: 'elenco' }; SS.del('pstPdpVista'); SS.del('pstPdpSez'); SS.del('pstPdpSogg'); SS.del('pstPdpElenco'); SS.del('pstPdpFiltro'); SS.del('pstPdpNomi'); SS.del('pstPdpNomiKo'); SS.del('pstPdpReati'); SS.del('pstPdpReatiDom'); disegna(); });
+    pannello.querySelector('[data-v]').addEventListener('click', () => { MEM.el = null; MEM.sez = {}; vista = { tipo: 'elenco' }; SS.del('pstPdpVista'); SS.del('pstPdpSez'); SS.del('pstPdpSogg'); SS.del('pstPdpElenco'); SS.del('pstPdpFiltro'); SS.del('pstPdpNomi'); SS.del('pstPdpNomiKo'); disegna(); });
     document.addEventListener('keydown', e => { if (e.key === 'Escape' && aperto) { if (vista.tipo !== 'elenco') tornaElenco(); else chiudi(); } });
   }
   function avvia() {
     costruisci(); nvBadge(); homeCard();
     let ultimo = location.pathname;
     setTimeout(avvioAutomatico, 5000);
-    setInterval(() => { if (/procedimenti/.test(location.pathname) && !inCorso) { try { leggiReatiDom(); } catch (e) {} } if (location.pathname !== ultimo) { ultimo = location.pathname; homeCard(); if (/\/home\/?$/.test(ultimo)) setTimeout(avvioAutomatico, 4000); } }, 1500);
+    setInterval(() => { if (location.pathname !== ultimo) { ultimo = location.pathname; homeCard(); if (/\/home\/?$/.test(ultimo)) setTimeout(avvioAutomatico, 4000); } }, 1500);
   }
   if (document.body) avvia(); else document.addEventListener('DOMContentLoaded', avvia);
 })();

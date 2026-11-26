@@ -1,4 +1,5 @@
 (() => {
+  window.__pstCass = (window.__pstCass || 0) + 1;
   const BASE = 'https://servizipst.giustizia.it/PST/it/';
   const percorso = location.pathname;
   const ss = {
@@ -212,12 +213,12 @@
   }
 
   async function paginaScelta() {
-    if (ss.get('pstCassAuto') === '1') { automatico(); return; }
+    if (ss.get('pstCassAuto') === '1') { log('script avviato, scelta automatica attiva' + (window.top !== window ? ' (in un riquadro interno)' : '')); automatico(); return; }
     const esito = ss.get('pstCassEsito');
     if (esito) { fisso = true; mostra(esito); return; }
     const u = await leggi('cassUrl');
+    const b = mostra('scelta automatica non attiva: usa il pulsante “Cassazione penale: ricorsi” della barra');
     if (u) {
-      const b = mostra('scelta automatica non attiva: usa il pulsante “Cassazione penale: ricorsi” della barra');
       const a = document.createElement('a'); a.href = u; a.textContent = 'vai ai ricorsi'; a.style.cssText = 'display:inline-block;margin-top:4px';
       b.insertBefore(a, b.lastChild);
     }
