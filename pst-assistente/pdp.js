@@ -34,6 +34,7 @@
 
   // ---------- raccolta dei dati ----------
   function memorizza(items, sostituisci) {
+    MEM.pagina = items.map(it => it && it.identificativo);   // la tabella dell’applicazione mostra le righe in questo stesso ordine
     const el = leggiElenco() || { items: {} };
     if (sostituisci && items.length) el.items = {};
     for (const it of items) if (it && it.identificativo) { el.items[it.identificativo] = it; if (MEM.visti) MEM.visti[it.identificativo] = it; }
@@ -136,8 +137,32 @@
     (n[id] = n[id] || {})[chiave] = item;
     LS.set('pstPdpSogg', n);
   }
+  function nomeDi(o) {
+    const t = k => (typeof o[k] === 'string' ? o[k].trim() : '');
+    return (t('cognome') || t('nome')) ? (t('nome') + ' ' + t('cognome')).trim() : (t('denominazione') || t('ragioneSociale') || '');
+  }
+  function apprendiElenco(u, corpo, risposta) {
+    const el = leggiElenco(); if (!el || !risposta || typeof risposta !== 'object') return 0;
+    const ogg = [];
+    const giu = v => { if (Array.isArray(v)) v.forEach(giu); else if (v && typeof v === 'object') { if (nomeDi(v)) ogg.push(v); Object.keys(v).forEach(k => { if (v[k] && typeof v[k] === 'object') giu(v[k]); }); } };
+    giu(risposta);
+    if (!ogg.length) return 0;
+    const idx = {};
+    for (const it of Object.values(el.items)) for (const sg of it.inizialiSoggetti || []) {
+      if (sg.identificativo) idx['i' + sg.identificativo] = [it.identificativo, sg.identificativo];
+      if (sg.idRegeWeb != null) idx['r' + sg.idRegeWeb] = [it.identificativo, sg.identificativo];
+    }
+    let n = 0;
+    for (const o of ogg) {
+      let m = null;
+      for (const k of Object.keys(o)) { const v = o[k]; if (v == null || typeof v === 'object') continue; m = m || idx['i' + v] || idx['r' + v]; }
+      if (m) { salvaNomi(m[0], m[1], [nomeDi(o)]); n++; }
+    }
+    if (n) { D.nomListe = (D.nomListe || 0) + n; if (aperto && !caricando) disegna(); }
+    return n;
+  }
   function apprendi(metodo, u, corpo, risposta, intest) {
-    if (!/soggetti\/nominativo/.test(u)) return;   // solo questa chiamata restituisce i nomi dei soggetti
+    if (!/soggetti\/nominativo/.test(u)) { apprendiElenco(u, corpo, risposta); return; }   // le altre risposte: nomi solo se legati a un soggetto noto
     const nomi = trovaNomi(risposta, [], '');
     if (!nomi.length) { D.nomVuote = (D.nomVuote || 0) + 1; return; }
     D.nomOk++;
@@ -392,11 +417,17 @@
   // a quale procedimento in memoria corrisponde una riga dell’elenco originale (numero/anno di registro e ufficio)
   function itemDiRiga(tr) {
     const el = leggiElenco(); if (!el) return null;
-    const t = tr.textContent.replace(/\s+/g, ' ');
-    const cand = Object.values(el.items).filter(it => (it.iscrizioniRegistro || []).some(i => i.numero != null && new RegExp('(^|\\D)' + i.numero + '\\s*/\\s*' + i.anno + '(\\D|$)').test(t)));
+    const righe = righeLista(), i = righe.indexOf(tr);
+    if (MEM.pagina && MEM.pagina.length === righe.length && i >= 0 && el.items[MEM.pagina[i]]) return el.items[MEM.pagina[i]];
+    // in mancanza: numero e anno di registro nel testo della riga (si tolgono punti e spazi, il portale può scrivere 2.730/2025)
+    const t = tr.textContent.replace(/[.\s ]/g, '');
+    const prova = (i2, a, b) => new RegExp('(^|\\D)' + a + '/' + b + '(\\D|$)').test(t);
+    const cand = Object.values(el.items).filter(it => (it.iscrizioniRegistro || []).some(x => x.numero != null && (prova(0, x.numero, x.anno) || prova(0, x.anno, x.numero))));
     if (cand.length < 2) return cand[0] || null;
-    return cand.find(it => (it.iscrizioniRegistro || []).some(i => i.ufficio && i.ufficio.ufficio && t.indexOf(i.ufficio.ufficio) >= 0)) || cand[0];
+    const t2 = tr.textContent.replace(/\s+/g, ' ');
+    return cand.find(it => (it.iscrizioniRegistro || []).some(x => x.ufficio && x.ufficio.ufficio && t2.indexOf(x.ufficio.ufficio) >= 0)) || cand[0];
   }
+
   const rottaLista = lista => {
     if (lista === 'attivi') return PERC + 'procedimenti-autorizzati';
     const ld = document.querySelector('a[href*="definiti"]');
@@ -1273,39 +1304,74 @@
     return el.tagName.toLowerCase() + c + (f ? '{' + f + '}' : '');
   }
   // collegamenti delle iniziali di una riga; se il portale ne mostra meno dei soggetti, si prova ad aprire il resto (“+N”, “…”, “altri”)
-  async function linkIniziali(tr, it) {
-    const attesi = it ? (it.inizialiSoggetti || []).length : 0;
-    const visibili = () => Array.from(tr.querySelectorAll('app-soggetti-iniziali a'));
-    let l = visibili();
-    if (!attesi || l.length >= attesi) return { l };
+  // Il portale mostra al massimo alcune iniziali; l’ultimo collegamento (“+N”) apre la finestra “Soggetti” con tutte le parti
+  // e il nome per esteso, in una tabella a pagine. Si legge da lì, pagina per pagina.
+  const tabSogg = () => document.querySelector('app-soggetti-info');
+  function linkPiu(tr, it) {
+    const l = Array.from(tr.querySelectorAll('app-soggetti-iniziali a'));
     const abbr = new Set(((it && it.inizialiSoggetti) || []).map(x => (x.abbreviazione || '').trim()));
-    const cand = Array.from(tr.querySelectorAll('app-soggetti-iniziali *, td *')).filter(e => {
-      if (e.closest('a') && l.indexOf(e.closest('a')) >= 0) return false;
-      const t = (e.textContent || '').trim(), c = typeof e.className === 'string' ? e.className : '';
-      if (abbr.has(t)) return false;
-      return (e.children.length === 0 || /^(a|button)$/i.test(e.tagName)) && (/^\+\s*\d+$|^(\.\.\.|…)$|altr|mostra|vedi|tutti|espandi/i.test(t) || /more|ellipsis|plus|espandi|expand/i.test(c));
-    });
-    const prima = new Set(document.querySelectorAll('a'));
-    for (const e of cand.slice(0, 2)) {
-      e.click(); await attendi(700);
-      const nuovi = Array.from(document.querySelectorAll('a')).filter(x => !prima.has(x) && !(pannello && pannello.contains(x)) && abbr.has((x.textContent || '').trim()));
-      l = visibili().concat(nuovi.filter(x => visibili().indexOf(x) < 0));
-      if (l.length >= attesi) break;
-    }
-    const sp = tr.querySelector('app-soggetti-iniziali');
-    return { l, nota: l.length < attesi ? 'visibili ' + l.length + ' iniziali su ' + attesi + (cand.length ? '' : ', nessun comando per mostrare le altre') + ' · struttura: ' + struttura(sp, 0).slice(0, 500) : '' };
+    const titoli = {}; l.forEach(a => { const k = a.getAttribute('title') || ''; titoli[k] = (titoli[k] || 0) + 1; });
+    return l.find(a => /^\s*\+|\d/.test(a.textContent || '') && !abbr.has((a.textContent || '').trim())) ||
+      (l.length > 1 && titoli[l[l.length - 1].getAttribute('title') || ''] === 1 && !abbr.has((l[l.length - 1].textContent || '').trim()) ? l[l.length - 1] : null);
   }
-  // legge i nomi mancanti di una riga; nomiNoti dice per ciascun soggetto se il nome è già in memoria
+  async function leggiFinestraSoggetti(a, it, falliti, etichetta) {
+    const x0 = D.nomListe || 0;
+    a.click();
+    if (!(await finche(() => { const t = tabSogg(); return t && t.querySelector('tbody tr'); }, 8000))) { falliti.push(etichetta + ' · finestra “Soggetti” non aperta'); return 0; }
+    await attendi(500);
+    const sogg = (it && it.inizialiSoggetti) || [];
+    const usati = new Set(); let n = 0;
+    const leggiPagina = () => {
+      const t = tabSogg(); if (!t) return;
+      const th = Array.from(t.querySelectorAll('thead th')).map(c => (c.textContent || '').trim().toLowerCase());
+      let iNome = th.findIndex(x => /cognome|nominativ|denominaz|nome/.test(x));
+      for (const tr of Array.from(t.querySelectorAll('tbody tr'))) {
+        const c = Array.from(tr.cells).map(td => (td.textContent || '').replace(/\s+/g, ' ').trim());
+        if (iNome < 0) iNome = Array.from(tr.cells).findIndex(td => td.querySelectorAll('xlib-ngp-df').length >= 2);
+        const nome = iNome >= 0 ? c[iNome] : '';
+        if (!nome) continue;
+        // si abbina per iniziali; a parità, per tipo di parte e data di nomina, poi nell’ordine
+        const cand = sogg.filter(sg => !usati.has(sg.identificativo) && c.indexOf((sg.abbreviazione || '').trim()) >= 0);
+        const dn = sg => sg.dataNomina ? fmtDT(sg.dataNomina) : '';
+        const sg = cand.find(x => (!x.descrizioneTipoParte || c.some(v => v.toLowerCase() === x.descrizioneTipoParte.toLowerCase())) && (!dn(x) || c.indexOf(dn(x)) >= 0)) || cand[0];
+        if (!sg) continue;
+        usati.add(sg.identificativo); salvaNomi(it.identificativo, sg.identificativo, [nome]); n++;
+      }
+    };
+    for (let p = 0; p < 40; p++) {
+      leggiPagina();
+      const t = tabSogg(); const next = t && t.querySelector('p-paginator .ui-paginator-next, p-paginator .p-paginator-next');
+      if (!next || next.classList.contains('ui-state-disabled') || next.classList.contains('p-disabled')) break;
+      const f = Array.from(t.querySelectorAll('tbody tr')).map(r => r.textContent).join('|');
+      next.click();
+      if (!(await finche(() => { const t2 = tabSogg(); return t2 && Array.from(t2.querySelectorAll('tbody tr')).map(r => r.textContent).join('|') !== f; }, 6000))) break;
+      await attendi(300);
+    }
+    // chiusura: pulsante “Chiudi” della finestra dei soggetti
+    const t = tabSogg();
+    const ch = t && Array.from(t.querySelectorAll('button')).find(b => (b.textContent || '').trim() === 'Chiudi');
+    if (ch) ch.click(); else await chiudiDlg();
+    await finche(() => !tabSogg() || !tabSogg().offsetParent, 3000);
+    await attendi(200);
+    const tot = Math.max(n, (D.nomListe || 0) - x0);
+    if (!tot) falliti.push(etichetta + ' · finestra “Soggetti” aperta ma nessun nome riconosciuto');
+    return tot;
+  }
   async function leggiRiga(tr, it, falliti, conteggio) {
     const etichetta = it ? riga(it, null).registro : (tr.cells[0] ? tr.cells[0].textContent.replace(/\s+/g, ' ').trim().slice(0, 40) : '?');
+    const piu = linkPiu(tr, it);
+    if (piu && it) {
+      conteggio.letti += await leggiFinestraSoggetti(piu, it, falliti, etichetta);
+      messaggio('Nomi letti: ' + conteggio.letti + (conteggio.errori ? ' · non letti: ' + conteggio.errori : '') + (conteggio.dove ? ' · ' + conteggio.dove : ''));
+      return;
+    }
     const rr = it ? riga(it, LS.get('pstPdpNomi') || {}) : null;
-    const { l, nota } = await linkIniziali(tr, it);
-    if (nota) falliti.push(etichetta + ' · ' + nota);
+    const l = Array.from(tr.querySelectorAll('app-soggetti-iniziali a')).filter(a => a !== piu);
     for (let i = 0; i < l.length; i++) {
       if (!inCorso) break;
       const a = l[i], t = (a.textContent || '').trim();
-      // si salta l’iniziale se il soggetto nella stessa posizione (e con la stessa sigla) ha già il nome
-      if (rr && rr.sogg[i] && rr.sogg[i].abbr === t && rr.nomiDi(rr.sogg[i]).length) continue;
+      // si salta l’iniziale se il soggetto con la stessa sigla ha già il nome
+      if (rr) { const s2 = rr.sogg.filter(x => x.abbr === t); if (s2.length && s2.every(x => rr.nomiDi(x).length)) continue; }
       if (!a.isConnected) continue;
       const m = await leggiDaIniziale(a);
       if (m) { conteggio.errori++; falliti.push(etichetta + ' · ' + t + ' · ' + m); } else conteggio.letti++;

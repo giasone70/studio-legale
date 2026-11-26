@@ -1,5 +1,28 @@
 (() => {
   window.__pstCass = (window.__pstCass || 0) + 1;
+  // Il portale della Cassazione sostituisce l’oggetto JSON del browser (JSON.stringify non è più una funzione):
+  // se ne prende una copia intatta da un riquadro nascosto, con una versione minima di riserva.
+  const JSON = (() => {
+    const g = window.JSON;
+    if (g && typeof g.stringify === 'function' && typeof g.parse === 'function') { try { if (g.stringify([1, 'a']) === '[1,"a"]') return g; } catch (e) {} }
+    try {
+      let f = document.getElementById('pstJsonPulito');
+      if (!f) { f = document.createElement('iframe'); f.id = 'pstJsonPulito'; f.style.display = 'none'; (document.body || document.documentElement).appendChild(f); }
+      const j = f.contentWindow && f.contentWindow.JSON;
+      if (j && typeof j.stringify === 'function') return j;
+    } catch (e) {}
+    const str = (v, sp, liv) => {
+      liv = liv || 0;
+      const a = sp ? '\n' + ' '.repeat((liv + 1) * sp) : '', z = sp ? '\n' + ' '.repeat(liv * sp) : '';
+      if (v === null || v === undefined || typeof v === 'function') return 'null';
+      if (typeof v === 'number' || typeof v === 'boolean') return isFinite(v) || typeof v === 'boolean' ? String(v) : 'null';
+      if (typeof v === 'string') return '"' + v.replace(/[\\"\u0000-\u001f]/g, c => ({ '"': '\\"', '\\': '\\\\', '\n': '\\n', '\r': '\\r', '\t': '\\t' }[c] || '\\u' + ('000' + c.charCodeAt(0).toString(16)).slice(-4))) + '"';
+      if (Array.isArray(v)) return v.length ? '[' + a + v.map(x => str(x, sp, liv + 1)).join(',' + a) + z + ']' : '[]';
+      const k = Object.keys(v).filter(x => v[x] !== undefined && typeof v[x] !== 'function');
+      return k.length ? '{' + a + k.map(x => str(x) + ':' + (sp ? ' ' : '') + str(v[x], sp, liv + 1)).join(',' + a) + z + '}' : '{}';
+    };
+    return { stringify: (v, r, sp) => str(v, typeof sp === 'number' ? sp : 0, 0), parse: t => (g && typeof g.parse === 'function') ? g.parse(t) : (() => { throw new Error('JSON.parse non disponibile'); })() };
+  })();
   const BASE = 'https://servizipst.giustizia.it/PST/it/';
   const percorso = location.pathname;
   const ss = {
