@@ -22,8 +22,15 @@
   if (vista.sez === 'stato') vista.sez = 'udienze';
   let caricando = '';
   const D = { nomResp: 0, nomOk: 0, nomSt: 0, nomi: '', agg: '', xhr: 0, lista: 0, risposte: 0, elementi: 0, errore: '', det: '' };
-  const leggiElenco = () => MEM.el || SS.get('pstPdpElenco');
-  const scriviElenco = el => { MEM.el = el; SS.set('pstPdpElenco', el); };
+  // elenco, nomi e anagrafiche restano nel browser anche dopo la chiusura della scheda (prima stavano in sessionStorage e andavano persi)
+  for (const k of ['pstPdpElenco', 'pstPdpNomi', 'pstPdpSogg']) {
+    const v = SS.get(k);
+    if (v && k !== 'pstPdpElenco') { const o = LS.get(k) || {}; for (const id of Object.keys(v)) o[id] = Object.assign({}, o[id] || {}, v[id]); LS.set(k, o); }
+    else if (v && !LS.get(k)) LS.set(k, v);
+    SS.del(k);
+  }
+  const leggiElenco = () => MEM.el || LS.get('pstPdpElenco');
+  const scriviElenco = el => { MEM.el = el; LS.set('pstPdpElenco', el); };
 
   // ---------- raccolta dei dati ----------
   function memorizza(items, sostituisci) {
@@ -100,7 +107,7 @@
   const percorso = u => { try { return new URL(u, location.href).pathname; } catch (e) { return String(u).split('?')[0]; } };
 
   // ---------- nomi e cognomi per esteso ----------
-  const NOMI = SS;
+  const NOMI = LS;
   function trovaNomi(v, out, ch) {
     if (!v || typeof v !== 'object') return out;
     if (Array.isArray(v)) { v.forEach(e => trovaNomi(e, out, ch)); return out; }
@@ -125,9 +132,9 @@
   }
   // quando l’utente apre nell’applicazione la finestra delle iniziali, si impara quale chiamata restituisce i nomi
   function salvaSogg(id, chiave, item) {
-    const n = SS.get('pstPdpSogg') || {};
+    const n = LS.get('pstPdpSogg') || {};
     (n[id] = n[id] || {})[chiave] = item;
-    SS.set('pstPdpSogg', n);
+    LS.set('pstPdpSogg', n);
   }
   function apprendi(metodo, u, corpo, risposta, intest) {
     if (!/soggetti\/nominativo/.test(u)) return;   // solo questa chiamata restituisce i nomi dei soggetti
@@ -470,7 +477,7 @@
   function disegnaInt() {
     if (!pannello) return;
     const el = leggiElenco();
-    const nomiTutti = SS.get('pstPdpNomi') || {};
+    const nomiTutti = LS.get('pstPdpNomi') || {};
     const tutte = el ? Object.values(el.items).map(i => riga(i, nomiTutti)) : [];
     const q = (pannello.querySelector('[data-q]').value || '').trim().toLowerCase();
     const nascondi = pannello.querySelector('[data-n]').checked;
@@ -533,7 +540,7 @@
           if (c[0] === 'iniziali') {
             const a = h('a', 'cursor:pointer;color:#14c;text-decoration:underline dotted;white-space:nowrap', sg.abbr || '?');
             a.href = '#'; a.title = 'Clic per leggere i nomi';
-            a.addEventListener('click', ev => { ev.preventDefault(); ev.stopPropagation(); un(r.id, sg); });
+            a.addEventListener('click', ev => { ev.preventDefault(); ev.stopPropagation(); un(r.id); });
             td.appendChild(a);
           } else if (c[0] === 'nome') {
             const nn = r.nomiDi(sg);
@@ -715,7 +722,10 @@
     box.appendChild(lb);
     box.appendChild(h('div', 'color:#667;font-size:12px;margin-bottom:8px', 'Ultimo controllo: ' + (s.ultimo ? new Date(s.ultimo).toLocaleString('it-IT') : 'mai') + (s.ultimoEsito ? ' · ' + s.ultimoEsito : '') + '. Il confronto riguarda ciò che l’elenco riporta (registro, iniziali, iter, date, stato): nuovi depositi, udienze o sentenze compaiono solo se cambiano quei dati.'));
     const m = h('div', 'color:#a00;margin-bottom:6px'); m.setAttribute('data-m', ''); box.appendChild(m);
-    const w = h('div', 'max-width:1000px'); renderNovita(w, false); box.appendChild(w);
+    const lb2 = h('label', 'display:block;margin-bottom:8px'); const cb2 = h('input'); cb2.type = 'checkbox'; cb2.checked = !!SS.get('pstPdpNvLette');
+    cb2.addEventListener('change', () => { SS.set('pstPdpNvLette', cb2.checked); disegna(); });
+    lb2.appendChild(cb2); lb2.appendChild(document.createTextNode(' mostra anche le novità già lette')); box.appendChild(lb2);
+    const w = h('div', 'max-width:1000px'); renderNovita(w, !SS.get('pstPdpNvLette')); box.appendChild(w);
   }
   function nvBadge() {
     const n = nvNonLette().length;
@@ -727,7 +737,7 @@
     const vecchio = document.getElementById('pstNovitaHome'); if (vecchio) vecchio.remove();
     if (!/\/home\/?$/.test(location.pathname) || !document.body) return;
     const n = nvNonLette().length, s = nvLeggi();
-    if (!n && !s.ultimo) return;
+    if (!n) return;
     const c = h('div', 'position:fixed;top:64px;right:12px;width:380px;max-height:70vh;overflow:auto;z-index:2147483640;background:#fff;color:#111;border:1px solid #889;border-radius:8px;box-shadow:0 3px 16px rgba(0,0,0,.3);padding:10px 12px;font:13px sans-serif');
     c.id = 'pstNovitaHome';
     const t = h('div', 'display:flex;gap:8px;align-items:center;flex-wrap:wrap');
@@ -1188,8 +1198,8 @@
     if (!it) { vista = { tipo: 'elenco' }; SS.set('pstPdpVista', vista); box.style.display = 'none'; lista.style.display = ''; return; }
     lista.style.display = 'none'; box.style.display = '';
     box.innerHTML = '';
-    const r = riga(it, SS.get('pstPdpNomi') || {});
-    const dettagli = (SS.get('pstPdpSogg') || {})[it.identificativo] || {};
+    const r = riga(it, LS.get('pstPdpNomi') || {});
+    const dettagli = (LS.get('pstPdpSogg') || {})[it.identificativo] || {};
     const ids = (pannello.__righe || []).map(x => x.id), pos = ids.indexOf(it.identificativo);
 
     const top = h('div', 'display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px');
@@ -1227,81 +1237,168 @@
     box.appendChild(cont);
   }
 
-  async function un() { return tutti(); }
   let inCorso = false;
-  // i nomi si leggono facendo cliccare le iniziali nell’elenco originale: la richiesta la fa l’applicazione (il portale rifiuta le richieste proprie).
-  // L’estensione apre da sé l’elenco dei procedimenti autorizzati e poi quello dei definiti, sotto il pannello.
+  const dlgAperto = () => document.querySelector('.ui-dialog #cognome_controlId, .ui-dialog #denominazione_controlId, .p-dialog #cognome_controlId, .p-dialog #denominazione_controlId');
+  const campiDlg = () => ['cognome', 'nome', 'denominazione'].map(n => { const e = document.querySelector('.ui-dialog #' + n + '_controlId, .p-dialog #' + n + '_controlId'); return e ? String(e.value || '').trim() : ''; });
+  async function chiudiDlg() {
+    const ch = Array.from(document.querySelectorAll('.ui-dialog button, .p-dialog button')).find(x => (x.textContent || '').trim() === 'Chiudi');
+    if (ch) ch.click();
+    else { const x = document.querySelector('.ui-dialog .ui-dialog-titlebar-close, .p-dialog .p-dialog-header-close'); if (x) x.click(); }
+    await finche(() => !dlgAperto(), 3000);
+    await attendi(150);
+  }
+  // clic su un’iniziale nell’elenco originale e attesa della risposta del portale; restituisce '' se il nome è stato letto, altrimenti il motivo
+  async function leggiDaIniziale(a) {
+    const r0 = D.nomResp, o0 = D.nomOk, v0 = D.nomVuote || 0;
+    let aperta = false, risposta = false;
+    for (let prova = 0; prova < 2 && !risposta; prova++) {
+      a.click();
+      aperta = !!(await finche(() => dlgAperto(), 4000));
+      risposta = !!(await finche(() => D.nomResp > r0 || campiDlg().some(Boolean), 8000));
+      if (!risposta) await chiudiDlg();
+    }
+    await attendi(250);
+    const ok = D.nomOk > o0 || campiDlg().some(Boolean);
+    await chiudiDlg();
+    if (ok) return '';
+    return !aperta ? 'finestra non aperta' : !risposta ? 'nessuna risposta del portale' : (D.nomSt && D.nomSt !== 200) ? 'risposta ' + D.nomSt : (D.nomVuote || 0) > v0 ? 'il portale non indica il nome' : 'nome non riconosciuto';
+  }
+  // struttura del riquadro delle iniziali, senza testi personali (solo segni come “+3” o “…”), per capire come il portale nasconde le altre
+  function struttura(el, prof) {
+    if (!el || prof > 6) return '';
+    if (el.nodeType === 3) { const t = el.nodeValue.trim(); return !t ? '' : /^[\s+.…\d()]+$/.test(t) ? '“' + t + '”' : '[' + t.length + ']'; }
+    if (el.nodeType !== 1) return '';
+    const c = typeof el.className === 'string' && el.className.trim() ? '.' + el.className.trim().split(/\s+/).slice(0, 3).join('.') : '';
+    const f = Array.from(el.childNodes).map(x => struttura(x, (prof || 0) + 1)).filter(Boolean).join(' ');
+    return el.tagName.toLowerCase() + c + (f ? '{' + f + '}' : '');
+  }
+  // collegamenti delle iniziali di una riga; se il portale ne mostra meno dei soggetti, si prova ad aprire il resto (“+N”, “…”, “altri”)
+  async function linkIniziali(tr, it) {
+    const attesi = it ? (it.inizialiSoggetti || []).length : 0;
+    const visibili = () => Array.from(tr.querySelectorAll('app-soggetti-iniziali a'));
+    let l = visibili();
+    if (!attesi || l.length >= attesi) return { l };
+    const abbr = new Set(((it && it.inizialiSoggetti) || []).map(x => (x.abbreviazione || '').trim()));
+    const cand = Array.from(tr.querySelectorAll('app-soggetti-iniziali *, td *')).filter(e => {
+      if (e.closest('a') && l.indexOf(e.closest('a')) >= 0) return false;
+      const t = (e.textContent || '').trim(), c = typeof e.className === 'string' ? e.className : '';
+      if (abbr.has(t)) return false;
+      return (e.children.length === 0 || /^(a|button)$/i.test(e.tagName)) && (/^\+\s*\d+$|^(\.\.\.|…)$|altr|mostra|vedi|tutti|espandi/i.test(t) || /more|ellipsis|plus|espandi|expand/i.test(c));
+    });
+    const prima = new Set(document.querySelectorAll('a'));
+    for (const e of cand.slice(0, 2)) {
+      e.click(); await attendi(700);
+      const nuovi = Array.from(document.querySelectorAll('a')).filter(x => !prima.has(x) && !(pannello && pannello.contains(x)) && abbr.has((x.textContent || '').trim()));
+      l = visibili().concat(nuovi.filter(x => visibili().indexOf(x) < 0));
+      if (l.length >= attesi) break;
+    }
+    const sp = tr.querySelector('app-soggetti-iniziali');
+    return { l, nota: l.length < attesi ? 'visibili ' + l.length + ' iniziali su ' + attesi + (cand.length ? '' : ', nessun comando per mostrare le altre') + ' · struttura: ' + struttura(sp, 0).slice(0, 500) : '' };
+  }
+  // legge i nomi mancanti di una riga; nomiNoti dice per ciascun soggetto se il nome è già in memoria
+  async function leggiRiga(tr, it, falliti, conteggio) {
+    const etichetta = it ? riga(it, null).registro : (tr.cells[0] ? tr.cells[0].textContent.replace(/\s+/g, ' ').trim().slice(0, 40) : '?');
+    const rr = it ? riga(it, LS.get('pstPdpNomi') || {}) : null;
+    const { l, nota } = await linkIniziali(tr, it);
+    if (nota) falliti.push(etichetta + ' · ' + nota);
+    for (let i = 0; i < l.length; i++) {
+      if (!inCorso) break;
+      const a = l[i], t = (a.textContent || '').trim();
+      // si salta l’iniziale se il soggetto nella stessa posizione (e con la stessa sigla) ha già il nome
+      if (rr && rr.sogg[i] && rr.sogg[i].abbr === t && rr.nomiDi(rr.sogg[i]).length) continue;
+      if (!a.isConnected) continue;
+      const m = await leggiDaIniziale(a);
+      if (m) { conteggio.errori++; falliti.push(etichetta + ' · ' + t + ' · ' + m); } else conteggio.letti++;
+      messaggio('Nomi letti: ' + conteggio.letti + (conteggio.errori ? ' · non letti: ' + conteggio.errori : '') + (conteggio.dove ? ' · ' + conteggio.dove : ''));
+    }
+  }
+  const nomiCompleti = it => { const r = riga(it, LS.get('pstPdpNomi') || {}); return r.sogg.every(sg => r.nomiDi(sg).length); };
+  const firmaLista = () => righeLista().map(r => r.textContent).join('|');
+  async function primaPagina() {
+    const primo = document.querySelector('p-paginator .ui-paginator-first, p-paginator .p-paginator-first');
+    if (primo && !primo.classList.contains('ui-state-disabled') && !primo.classList.contains('p-disabled')) { const f0 = firmaLista(); primo.click(); await finche(() => firmaLista() !== f0, 4000); await attendi(300); }
+  }
+  async function paginaSuccessiva() {
+    const next = document.querySelector('p-paginator .ui-paginator-next, p-paginator .p-paginator-next');
+    if (!next || next.classList.contains('ui-state-disabled') || next.classList.contains('p-disabled')) return false;
+    const f1 = firmaLista(); next.click();
+    if (!(await finche(() => firmaLista() !== f1, 6000))) return null;
+    await attendi(300); return true;
+  }
+  function inizioLettura() { inCorso = true; const bt = pannello.querySelector('[data-t]'); bt.textContent = 'Interrompi'; }
+  function fineLettura(testo, falliti) {
+    const interrotto = !inCorso;
+    inCorso = false; pannello.querySelector('[data-t]').textContent = 'Carica tutti i nomi';
+    SS.set('pstPdpNomiKo', falliti);
+    messaggio((interrotto ? 'Interrotto. ' : '') + testo);
+    disegna();
+  }
+
+  // clic sulle iniziali nel pannello: si leggono solo i nomi di quel procedimento
+  async function un(id) {
+    if (inCorso) { inCorso = false; return; }
+    if (caricando || aggInCorso || ctlInCorso) { messaggio('Attendi la fine dell’operazione in corso.'); return; }
+    const el = leggiElenco(), it = el && el.items[id];
+    if (!it) return;
+    if (nomiCompleti(it)) { messaggio('I nomi di questo procedimento sono già in memoria.'); return; }
+    inizioLettura();
+    const falliti = [], cont = { letti: 0, errori: 0, dove: riga(it, null).registro };
+    let trovata = false;
+    try {
+      // prima l’elenco in cui si trova di solito, poi l’altro
+      for (const lista of (it.definito || it.archiviato) ? ['definiti', 'attivi'] : ['attivi', 'definiti']) {
+        if (!inCorso || trovata) break;
+        messaggio('Cerco ' + cont.dove + ' nell’elenco dei ' + NOME_LISTA[lista] + '…');
+        if (!(await assicuraLista(lista))) continue;
+        let tr = righeLista().find(r => { const x = itemDiRiga(r); return x && x.identificativo === id; });
+        if (!tr) {
+          await primaPagina();
+          for (let n = 0; n < 200 && inCorso; n++) {
+            tr = righeLista().find(r => { const x = itemDiRiga(r); return x && x.identificativo === id; });
+            if (tr) break;
+            const p = await paginaSuccessiva(); if (!p) break;
+          }
+        }
+        if (tr) { trovata = true; await leggiRiga(tr, it, falliti, cont); }
+      }
+    } catch (e) { falliti.push(cont.dove + ' · interrotto: ' + e.message); }
+    fineLettura(trovata ? 'Nomi letti per ' + cont.dove + ': ' + cont.letti + (cont.errori ? ' · non letti: ' + cont.errori : '') : cont.dove + ' non trovato negli elenchi del portale.', falliti);
+  }
+
+  // “Carica tutti i nomi”: l’estensione apre da sé l’elenco dei procedimenti autorizzati e poi quello dei definiti, sotto il pannello
   async function tutti() {
     if (inCorso) { inCorso = false; return; }
     if (caricando || aggInCorso || ctlInCorso) { messaggio('Attendi la fine dell’operazione in corso.'); return; }
-    const nomiTutti = () => SS.get('pstPdpNomi') || {};
-    const completo = it => { const r = riga(it, nomiTutti()); return r.sogg.every(sg => r.nomiDi(sg).length); };
     const el0 = leggiElenco();
-    if (el0 && Object.keys(el0.items).length && Object.values(el0.items).every(completo)) { messaggio('Tutti i nomi sono già in memoria.'); return; }
-    inCorso = true;
-    const bt = pannello.querySelector('[data-t]'); bt.textContent = 'Interrompi';
-    const dlgAperto = () => document.querySelector('.ui-dialog #cognome_controlId, .ui-dialog #denominazione_controlId');
-    const campi = () => ['cognome', 'nome', 'denominazione'].map(n => { const e = document.querySelector('.ui-dialog #' + n + '_controlId'); return e ? String(e.value || '').trim() : ''; });
-    const chiudiDlg = async () => {
-      const ch = Array.from(document.querySelectorAll('.ui-dialog button')).find(x => (x.textContent || '').trim() === 'Chiudi');
-      if (ch) ch.click();
-      else { const x = document.querySelector('.ui-dialog .ui-dialog-titlebar-close'); if (x) x.click(); }
-      await finche(() => !dlgAperto(), 3000);
-      await attendi(150);
-    };
-    const firma = () => righeLista().map(r => r.textContent).join('|');
-    let letti = 0, errori = 0, saltati = 0, pagine = 0; const falliti = [], note = [];
+    if (el0 && Object.keys(el0.items).length && Object.values(el0.items).every(nomiCompleti)) { messaggio('Tutti i nomi sono già in memoria.'); return; }
+    inizioLettura();
+    const falliti = [], note = [], cont = { letti: 0, errori: 0, dove: '' };
+    let saltati = 0, pagine = 0;
     try {
       for (const lista of ['attivi', 'definiti']) {
         if (!inCorso) break;
         messaggio('Apro l’elenco dei ' + NOME_LISTA[lista] + '…');
         if (!(await assicuraLista(lista))) { note.push('elenco dei ' + NOME_LISTA[lista] + ' non raggiunto'); continue; }
-        const primo = document.querySelector('p-paginator .ui-paginator-first');
-        if (primo && !primo.classList.contains('ui-state-disabled')) { const f0 = firma(); primo.click(); await finche(() => firma() !== f0, 4000); await attendi(300); }
+        await primaPagina();
         let pagina = 1;
         while (inCorso) {
-          pagine++;
+          pagine++; cont.dove = NOME_LISTA[lista] + ', pagina ' + pagina;
           for (const r of righeLista()) {
             if (!inCorso) break;
             const it = itemDiRiga(r);
-            if (it && completo(it)) { saltati++; continue; }
-            const etichetta = it ? riga(it, null).registro : (r.cells[0] ? r.cells[0].textContent.replace(/\s+/g, ' ').trim().slice(0, 40) : '?');
-            for (const a of Array.from(r.querySelectorAll('app-soggetti-iniziali a'))) {
-              if (!inCorso) break;
-              const r0 = D.nomResp, o0 = D.nomOk, v0 = D.nomVuote || 0;
-              let aperta = false, risposta = false;
-              for (let prova = 0; prova < 2 && !risposta; prova++) {
-                a.click();
-                aperta = !!(await finche(() => dlgAperto(), 4000));
-                risposta = !!(await finche(() => D.nomResp > r0 || campi().some(Boolean), 8000));
-                if (!risposta) await chiudiDlg();
-              }
-              await attendi(250);
-              const ok = D.nomOk > o0 || campi().some(Boolean);
-              if (ok) letti++;
-              else {
-                errori++;
-                const motivo = !aperta ? 'finestra non aperta' : !risposta ? 'nessuna risposta del portale' : (D.nomSt && D.nomSt !== 200) ? 'risposta ' + D.nomSt : (D.nomVuote || 0) > v0 ? 'il portale non indica il nome' : 'nome non riconosciuto';
-                falliti.push(etichetta + ' · ' + (a.textContent || '').trim() + ' · ' + motivo);
-              }
-              await chiudiDlg();
-              messaggio('Nomi letti: ' + letti + ' · ' + NOME_LISTA[lista] + ', pagina ' + pagina + (errori ? ' · non letti: ' + errori : ''));
-            }
+            if (it && nomiCompleti(it)) { saltati++; continue; }
+            await leggiRiga(r, it, falliti, cont);
           }
           disegna();
-          const next = document.querySelector('p-paginator .ui-paginator-next');
-          if (!inCorso || !next || next.classList.contains('ui-state-disabled')) break;
-          const f1 = firma(); next.click();
-          if (!(await finche(() => firma() !== f1, 6000))) { note.push(NOME_LISTA[lista] + ': la pagina ' + (pagina + 1) + ' non si è caricata'); break; }
-          await attendi(300); pagina++;
+          if (!inCorso) break;
+          const p = await paginaSuccessiva();
+          if (p === null) note.push(NOME_LISTA[lista] + ': la pagina ' + (pagina + 1) + ' non si è caricata');
+          if (!p) break;
+          pagina++;
         }
       }
     } catch (e) { note.push('interrotto: ' + e.message); }
-    const interrotto = !inCorso;
-    inCorso = false; bt.textContent = 'Carica tutti i nomi';
-    SS.set('pstPdpNomiKo', falliti);
-    messaggio((interrotto ? 'Interrotto. ' : '') + 'Nomi letti: ' + letti + ' · procedimenti già completi saltati: ' + saltati + ' · pagine: ' + pagine + (errori ? ' · non letti: ' + errori : '') + (note.length ? ' · ' + note.join(' · ') : ''));
-    disegna();
+    fineLettura('Nomi letti: ' + cont.letti + ' · procedimenti già completi saltati: ' + saltati + ' · pagine: ' + pagine + (cont.errori ? ' · non letti: ' + cont.errori : '') + (note.length ? ' · ' + note.join(' · ') : ''), falliti);
   }
 
   function csv() {
@@ -1337,7 +1434,7 @@
       '<strong>Procedimenti autorizzati</strong>' +
       '<input data-q type="search" placeholder="Cerca in tutte le colonne" style="padding:3px 6px;min-width:260px">' +
       '<label><input data-n type="checkbox"> nascondi definiti e archiviati</label>' +
-      '<button data-nv>Novità</button><button data-a>Aggiorna</button><button data-t>Carica tutti i nomi</button><button data-s>Esporta CSV</button><button data-v>Svuota copia locale</button>' +
+      '<button data-nv>Novità</button><button data-a>Aggiorna</button><button data-t>Carica tutti i nomi</button><button data-s>Esporta CSV</button><button data-v title="Cancella l’elenco e le sezioni lette; i nomi già letti restano">Svuota copia locale</button>' +
       '<button data-x style="margin-left:auto">Chiudi</button></div>' +
       '<div data-c style="margin-bottom:4px"></div><div data-d style="color:#888;font-size:11px;margin-bottom:4px"></div><div data-m style="color:#a00;margin-bottom:4px"></div><div data-ko></div>' +
       '<table style="border-collapse:collapse;width:100%"></table></div><div data-sc style="display:none"></div>';
@@ -1351,7 +1448,7 @@
     pannello.querySelector('[data-s]').addEventListener('click', csv);
     pannello.querySelector('[data-t]').addEventListener('click', tutti);
     pannello.querySelector('[data-x]').addEventListener('click', chiudi);
-    pannello.querySelector('[data-v]').addEventListener('click', () => { MEM.el = null; MEM.sez = {}; vista = { tipo: 'elenco' }; SS.del('pstPdpVista'); SS.del('pstPdpSez'); SS.del('pstPdpSogg'); SS.del('pstPdpElenco'); SS.del('pstPdpFiltro'); SS.del('pstPdpNomi'); SS.del('pstPdpNomiKo'); disegna(); });
+    pannello.querySelector('[data-v]').addEventListener('click', () => { MEM.el = null; MEM.sez = {}; vista = { tipo: 'elenco' }; SS.del('pstPdpVista'); SS.del('pstPdpSez'); SS.del('pstPdpSogg'); LS.del('pstPdpElenco'); SS.del('pstPdpFiltro'); SS.del('pstPdpNomiKo'); disegna(); });
     document.addEventListener('keydown', e => { if (e.key === 'Escape' && aperto) { if (vista.tipo !== 'elenco') tornaElenco(); else chiudi(); } });
   }
   function avvia() {

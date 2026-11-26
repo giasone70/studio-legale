@@ -213,7 +213,7 @@
   }
 
   async function paginaScelta() {
-    if (ss.get('pstCassAuto') === '1') { log('script avviato, scelta automatica attiva' + (window.top !== window ? ' (in un riquadro interno)' : '')); automatico(); return; }
+    if (ss.get('pstCassAuto') === '1') { log('script avviato, scelta automatica attiva' + (window.top !== window ? ' (in un riquadro interno)' : '')); return automatico(); }
     const esito = ss.get('pstCassEsito');
     if (esito) { fisso = true; mostra(esito); return; }
     const u = await leggi('cassUrl');
@@ -347,7 +347,16 @@
     }
   }
 
-  if (/pst_2_9\.wp$/.test(percorso)) paginaScelta();
-  else if (/pst_2_9_1_1\.wp$/.test(percorso)) paginaNotifiche();
-  else if (/pst_2_9_1_2\.wp$/.test(percorso)) paginaRicorsi();
+  // un errore dello script si mostra in un riquadro semplice, così non passa inosservato
+  const errore = e => {
+    try { log('ERRORE dello script: ' + (e && e.message || e)); } catch (e2) {}
+    const d = document.createElement('div');
+    d.style.cssText = 'position:fixed;left:8px;top:8px;z-index:2147483647;background:#fde;border:1px solid #c66;padding:6px 10px;font:12px sans-serif;color:#222';
+    d.textContent = 'PST assistente · errore nello script della Cassazione: ' + (e && e.message || e) + ' · usa “Diagnostica Cassazione” nella barra';
+    (document.body || document.documentElement).appendChild(d);
+  };
+  try {
+    const p = /pst_2_9\.wp$/.test(percorso) ? paginaScelta() : /pst_2_9_1_1\.wp$/.test(percorso) ? paginaNotifiche() : /pst_2_9_1_2\.wp$/.test(percorso) ? paginaRicorsi() : null;
+    if (p && p.catch) p.catch(errore);
+  } catch (e) { errore(e); }
 })();

@@ -91,16 +91,18 @@
     const testo = 'PST assistente v' + (window.__pstVersione || '?') + ' · diagnostica Cassazione · ' + new Date().toLocaleString('it-IT') + '\n\n' +
       (log.length ? log.map(v => v.ora + ' [' + v.pag + '] ' + v.t + (v.x ? '\n    ' + JSON.stringify(v.x) : '')).join('\n') : '(registro dei passaggi vuoto)') +
       '\n\n' + JSON.stringify(foto, null, 1);
-    let p = document.getElementById('pstDiagCass'); if (p) p.remove();
+    let p = document.getElementById('pstDiagCass'); if (p && p.parentNode) p.parentNode.removeChild(p);
     p = document.createElement('div'); p.id = 'pstDiagCass';
     p.style.cssText = 'position:fixed;left:8px;right:8px;bottom:44px;max-height:60vh;z-index:2147483647;background:#fffbe6;border:1px solid #d9c36b;box-shadow:0 3px 14px rgba(0,0,0,.3);padding:8px;font:12px sans-serif;display:flex;flex-direction:column;gap:6px';
     const ta = document.createElement('textarea'); ta.value = testo; ta.readOnly = true; ta.style.cssText = 'width:100%;height:40vh;font:11px monospace';
     const az = document.createElement('div'); az.style.cssText = 'display:flex;gap:6px';
-    const c = document.createElement('button'); c.textContent = 'Copia negli appunti';
+    const c = document.createElement('button'); c.type = 'button'; c.textContent = 'Copia negli appunti';
     c.addEventListener('click', async () => { let ok = false; try { await navigator.clipboard.writeText(testo); ok = true; } catch (e) { ta.select(); try { ok = document.execCommand('copy'); } catch (e2) {} } c.textContent = ok ? 'Copiata' : 'Seleziona il testo e copialo a mano'; });
-    const x = document.createElement('button'); x.textContent = 'Chiudi'; x.addEventListener('click', () => p.remove());
-    az.append(c, x); p.append(az, ta);
-    document.documentElement.appendChild(p);
+    const d = document.createElement('button'); d.type = 'button'; d.textContent = 'Scarica come file';
+    d.addEventListener('click', () => { const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([testo], { type: 'text/plain;charset=utf-8' })); a.download = 'diagnostica_cassazione_' + Date.now() + '.txt'; (document.body || document.documentElement).appendChild(a); a.click(); a.parentNode.removeChild(a); });
+    const x = document.createElement('button'); x.type = 'button'; x.textContent = 'Chiudi'; x.addEventListener('click', () => p.parentNode && p.parentNode.removeChild(p));
+    az.appendChild(c); az.appendChild(d); az.appendChild(x); p.appendChild(az); p.appendChild(ta);
+    (document.body || document.documentElement).appendChild(p);
   }
   if (location.pathname.indexOf('/PST/it/') === 0) voci.splice(1, 0, ['Diagnostica Cassazione', diagnosticaCassazione]);
 
@@ -109,9 +111,11 @@
     'display:flex;gap:4px;padding:3px 6px;background:rgba(30,40,60,.85);border-radius:6px;font:12px sans-serif';
   for (const [testo, fn] of voci) {
     const b = document.createElement('button');
+    b.type = 'button';
     b.textContent = testo;
     b.style.cssText = 'font:12px sans-serif;padding:3px 8px;cursor:pointer;border:0;border-radius:4px;background:#e8eef7';
-    b.addEventListener('click', fn);
+    // un errore si legge sul pulsante stesso, invece di non vedere nulla
+    b.addEventListener('click', ev => { ev.preventDefault(); ev.stopPropagation(); try { const r = fn(); if (r && r.catch) r.catch(e => { b.textContent = testo + ' · errore: ' + (e && e.message || e); }); } catch (e) { b.textContent = testo + ' · errore: ' + (e && e.message || e); } });
     bar.appendChild(b);
   }
   const ver = document.createElement('span');
