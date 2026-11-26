@@ -19,6 +19,7 @@
   const MEM = window.__pstPdpMem = window.__pstPdpMem || { el: null };
   MEM.sez = MEM.sez || SS.get('pstPdpSez') || {};   // sezioni lette dal portale: { idProcedimento: { stato: {ora, voci}, depositi: {...} } }
   let vista = SS.get('pstPdpVista') || { tipo: 'elenco' };
+  if (vista.sez === 'stato') vista.sez = 'udienze';
   let caricando = '';
   const D = { nomResp: 0, nomOk: 0, nomSt: 0, nomi: '', agg: '', xhr: 0, lista: 0, risposte: 0, elementi: 0, errore: '', det: '' };
   const leggiElenco = () => MEM.el || SS.get('pstPdpElenco');
@@ -198,7 +199,7 @@
           if (x.status !== 200) return;
           letto = true;
           const r = x.responseType === 'json' ? x.response : JSON.parse(x.responseText);
-          if (altra) { apprendi(x.__pm, x.__pu, typeof b === 'string' ? b : null, r, x.__hd); return; }
+          if (altra) { try { reatiDaRisposta(x.__pu, typeof b === 'string' ? b : null, r); } catch (e) {} apprendi(x.__pm, x.__pu, typeof b === 'string' ? b : null, r, x.__hd); return; }
           const items = r && r.result && r.result.items;
           if (!Array.isArray(items)) { D.errore = 'risposta senza elenco'; return; }
           D.risposte++;
@@ -288,12 +289,11 @@
   }
   // l’elenco si rilegge facendo scorrere le pagine all’applicazione: la richiesta la fa lei, l’estensione ne salva la risposta
   let aggInCorso = false;
-  const SEL_LISTA = 'app-procedimenti-view tbody.ui-table-tbody > tr.ui-selectable-row';
   const attendi = ms => new Promise(ok => setTimeout(ok, ms));
   const finche = async (f, max, passo) => { const t0 = Date.now(); while (Date.now() - t0 < (max || 4000)) { try { const v = f(); if (v) return v; } catch (e) {} await attendi(passo || 100); } return null; };
   // fa scorrere le pagine dell’elenco originale, dalla prima all’ultima: le richieste le fa l’applicazione
   async function scorri(continua, avanza) {
-    const firma = () => Array.from(document.querySelectorAll(SEL_LISTA)).map(r => r.textContent).join('|');
+    const firma = () => righeLista().map(r => r.textContent).join('|');
     const attivo = b => b && !b.classList.contains('ui-state-disabled');
     let pagina = 1, completo = false, motivo = '';
     const primo = document.querySelector('p-paginator .ui-paginator-first');
@@ -320,8 +320,8 @@
   async function aggiorna() {
     if (aggInCorso) { aggInCorso = false; return; }
     if (caricando) return;
-    if (!document.querySelector(SEL_LISTA)) { messaggio('Per aggiornare apri la pagina “Procedimenti autorizzati” (o “Procedimenti definiti”) e riprova da lì.'); return; }
     aggInCorso = true;
+    if (!righeLista().length) { messaggio('Apro l’elenco dei procedimenti autorizzati…'); if (!(await assicuraLista('attivi'))) { aggInCorso = false; messaggio('L’elenco dei procedimenti autorizzati non si è caricato: aprilo dal menu del portale e riprova.'); return; } }
     const bt = pannello && pannello.querySelector('[data-a]'); if (bt) bt.textContent = 'Interrompi';
     const lista = listaCorrente();
     MEM.visti = {};
@@ -342,31 +342,139 @@
   const iso = d => { const m = /^(\d{2})\/(\d{2})\/(\d{4})/.exec(d || ''); return m ? m[3] + m[2] + m[1] : String(d || ''); };
   const unici = a => [...new Set(a.filter(Boolean))];
 
+  // ---------- reati contestati ----------
+  // Il nome del campo non è noto con certezza: si cercano le chiavi che parlano di reati o imputazioni, in qualsiasi punto della risposta.
+  const RX_REATI = /reat|imputaz|qualificaz|contestaz/i;
+  const RX_NO_REATO = /^(id|identificativ|data|numero|totale|flag|is[A-Z]|has[A-Z]|codice)/;
+  function fmtReato(o) {
+    if (o == null) return '';
+    if (typeof o !== 'object') return String(o).trim();
+    const f = piatto(o, '', {});
+    const ult = k => k.split('.').pop().replace(/\[[^\]]*\]/g, '');
+    const pick = re => { for (const k of Object.keys(f)) if (re.test(ult(k))) return f[k]; return ''; };
+    const art = pick(/^(articolo|numeroArticolo|art)$/i), co = pick(/^comma$/i), le = pick(/^lettera$/i);
+    const fonte = pick(/^(descrizioneFonte|fonte|siglaFonte|descrizioneLegge|legge|descrizioneNorma|norma|descrizioneCodice|codiceFonte)$/i);
+    const des = pick(/^(descrizione|descrizioneReato|titolo|titoloReato|descrizioneBreve|descrizioneEstesa|testo|reato)$/i);
+    let t = [art && 'art. ' + art, co && 'co. ' + co, le && 'lett. ' + le, fonte].filter(Boolean).join(' ');
+    if (des && des !== t) t = t ? t + ' – ' + des : des;
+    if (!t) t = Object.keys(f).filter(k => !RX_NO_REATO.test(ult(k)) && !/^(true|false)$/.test(f[k])).map(k => f[k]).join(' ');
+    return t.trim();
+  }
+  function reatiIn(v, escludi, out, prof) {
+    out = out || []; prof = prof || 0;
+    if (!v || typeof v !== 'object' || prof > 7) return out;
+    if (Array.isArray(v)) { v.forEach(x => reatiIn(x, escludi, out, prof + 1)); return out; }
+    for (const k of Object.keys(v)) {
+      if (escludi && escludi.indexOf(k) >= 0) continue;
+      const x = v[k];
+      if (RX_REATI.test(k)) {
+        if (Array.isArray(x)) x.forEach(e => { const t = fmtReato(e); if (t) out.push(t); });
+        else if (x && typeof x === 'object') { const t = fmtReato(x); if (t) out.push(t); }
+        else if (x != null && x !== '' && typeof x !== 'boolean' && !RX_NO_REATO.test(k)) out.push(String(x).trim());
+      } else if (x && typeof x === 'object') reatiIn(x, escludi, out, prof + 1);
+    }
+    return [...new Set(out)];
+  }
+  // reati letti da altre risposte del portale (dettaglio aperto dall’applicazione) o dalla colonna dell’elenco originale
+  const reatiExtra = id => { const a = (SS.get('pstPdpReati') || {})[id] || [], b = (SS.get('pstPdpReatiDom') || {})[id]; return a.concat(b ? [b] : []); };
+  function reatiDaRisposta(u, corpo, risp) {
+    const el = leggiElenco(); if (!el) return;
+    const r = reatiIn(risp); if (!r.length) return;
+    let url = ''; try { const x = new URL(u, location.href); url = x.pathname + x.search; } catch (e) {}
+    const id = Object.keys(el.items).find(k => contiene(url, k) || contiene(corpo, k));
+    if (!id) return;
+    const m = SS.get('pstPdpReati') || {}; m[id] = r; SS.set('pstPdpReati', m);
+  }
+  // righe dell’elenco originale: selettore preciso e, in mancanza, qualsiasi riga di tabella PrimeNG con le iniziali dei soggetti
+  const SEL_LISTA = 'app-procedimenti-view tbody.ui-table-tbody > tr.ui-selectable-row';
+  const righeLista = () => {
+    let r = Array.from(document.querySelectorAll(SEL_LISTA));
+    if (!r.length) r = Array.from(document.querySelectorAll('tbody.ui-table-tbody > tr, tbody.p-datatable-tbody > tr')).filter(x => x.querySelector('app-soggetti-iniziali'));
+    return r.filter(x => !pannello || !pannello.contains(x));
+  };
+  // a quale procedimento in memoria corrisponde una riga dell’elenco originale (numero/anno di registro e ufficio)
+  function itemDiRiga(tr) {
+    const el = leggiElenco(); if (!el) return null;
+    const t = tr.textContent.replace(/\s+/g, ' ');
+    const cand = Object.values(el.items).filter(it => (it.iscrizioniRegistro || []).some(i => i.numero != null && new RegExp('(^|\\D)' + i.numero + '\\s*/\\s*' + i.anno + '(\\D|$)').test(t)));
+    if (cand.length < 2) return cand[0] || null;
+    return cand.find(it => (it.iscrizioniRegistro || []).some(i => i.ufficio && i.ufficio.ufficio && t.indexOf(i.ufficio.ufficio) >= 0)) || cand[0];
+  }
+  function leggiReatiDom() {
+    const righe = righeLista(); if (!righe.length) return;
+    const tab = righe[0].closest('table'), th = tab && tab.tHead ? Array.from(tab.tHead.rows[0].cells) : [];
+    const i = th.findIndex(c => /reat|imputaz/i.test(c.textContent || ''));
+    D.colReati = i >= 0 ? 'colonna ' + (i + 1) : 'nessuna colonna “reati” nell’elenco originale';
+    if (i < 0) return;
+    const m = SS.get('pstPdpReatiDom') || {}; let n = 0;
+    for (const tr of righe) {
+      const c = tr.cells[i], it = c && itemDiRiga(tr);
+      const t = c ? c.textContent.replace(/\s+/g, ' ').trim() : '';
+      if (it && t && m[it.identificativo] !== t) { m[it.identificativo] = t; n++; }
+    }
+    if (n) { SS.set('pstPdpReatiDom', m); if (aperto && !caricando) disegna(); }
+  }
+  const rottaLista = lista => {
+    if (lista === 'attivi') return PERC + 'procedimenti-autorizzati';
+    const ld = document.querySelector('a[href*="definiti"]');
+    try { if (ld) return new URL(ld.getAttribute('href'), document.baseURI).pathname; } catch (e) {}
+    return PERC + 'procedimenti-autorizzati-definiti';
+  };
+  // porta l’applicazione sull’elenco richiesto (sotto il pannello) e attende che le righe siano quelle nuove
+  async function assicuraLista(lista) {
+    if (righeLista().length && listaCorrente() === lista) return true;
+    const firma0 = righeLista().map(r => r.textContent).join('|');
+    history.pushState({}, '', rottaLista(lista));
+    window.dispatchEvent(new PopStateEvent('popstate', { state: {} }));
+    const ok = await finche(() => listaCorrente() === lista && righeLista().length && righeLista().map(r => r.textContent).join('|') !== firma0, 20000, 250);
+    await attendi(1000);
+    return !!ok;
+  }
+
   function riga(it, nomiTutti) {
     const isc = it.iscrizioniRegistro || [];
     const nomiR = (nomiTutti || {})[it.identificativo] || {};
-    const sogg = (it.inizialiSoggetti || []).map(s => ({ sid: s.identificativo, rid: s.idRegeWeb, abbr: s.abbreviazione || '', parte: s.descrizioneTipoParte || '' }));
+    const sogg = (it.inizialiSoggetti || []).map(s => ({ sid: s.identificativo, rid: s.idRegeWeb, abbr: s.abbreviazione || '', parte: s.descrizioneTipoParte || '', reati: reatiIn(s) }));
     const nomiDi = s => nomiR[s.sid] || nomiR[String(s.rid)] || [];
-    const completo = sogg.map(s => s.abbr + (s.parte ? ' (' + s.parte + ')' : '') + (nomiDi(s).length ? ': ' + nomiDi(s).join(', ') : '')).join('; ') +
-      (nomiR['*'] ? ' – ' + nomiR['*'].join(', ') : '');
+    const magDi = i => { const m = i.magistrato || {}; return m.nominativo || [m.nome, m.cognome].filter(Boolean).join(' '); };
+    // una riga per iscrizione: numero, ufficio e magistrato restano allineati
+    const linee = isc.map(i => ({ reg: ((i.codiceTipoRegistro || '') + ' ' + i.numero + '/' + i.anno).trim(), uff: (i.ufficio && i.ufficio.ufficio) || '', mag: magDi(i), reati: reatiIn(i) }));
+    // reati: per iscrizione, per soggetto e del procedimento; con più gruppi si indica a chi si riferiscono
+    const reati = [];
+    const conIsc = linee.filter(l => l.reati.length), conSog = sogg.filter(x => x.reati.length);
+    conIsc.forEach(l => l.reati.forEach(t => reati.push(conIsc.length > 1 || linee.length > 1 ? l.reg + ': ' + t : t)));
+    conSog.forEach(x => x.reati.forEach(t => reati.push(conSog.length > 1 ? x.abbr + ': ' + t : t)));
+    reatiIn(it, ['iscrizioniRegistro', 'inizialiSoggetti']).concat(reatiExtra(it.identificativo)).forEach(t => reati.push(t));
     const primo = isc[0] || {};
+    const nomiTesto = sogg.map(x => nomiDi(x).join(', ')).filter(Boolean).concat(nomiR['*'] || []);
     return {
-      id: it.identificativo,
-      registro: isc.map(i => (i.codiceTipoRegistro || '') + ' ' + i.numero + '/' + i.anno).join(' | '),
+      id: it.identificativo, linee,
+      registro: linee.map(l => l.reg).join(' | '),
       chiave: (Number(primo.anno) || 0) * 1e7 + (Number(primo.numero) || 0),
-      ufficio: unici(isc.map(i => i.ufficio && i.ufficio.ufficio)).join(' | '),
-      magistrato: unici(isc.map(i => i.magistrato && i.magistrato.nominativo)).join(' | '),
-      soggetti: completo, sogg, nomiR, nomiDi,
+      ufficio: unici(linee.map(l => l.uff)).join(' | '),
+      magistrato: unici(linee.map(l => l.mag)).join(' | '),
+      reati: unici(reati),
+      soggetti: sogg.map(x => x.abbr + (x.parte ? ' (' + x.parte + ')' : '') + (nomiDi(x).length ? ': ' + nomiDi(x).join(', ') : '')).join('; ') + (nomiR['*'] ? ' – ' + nomiR['*'].join(', ') : ''),
+      nomiTesto,
+      sogg, nomiR, nomiDi,
       nomina: fmt(it.dataNomina),
       chiusa: !!(it.archiviato || it.definito),
       stato: (it.archiviato ? 'Archiviato' : it.definito ? 'Definito' + (it.dataDefinizione ? ' ' + fmt(it.dataDefinizione) : '') : 'In corso') + (it.faulted ? ' ⚠' : ''),
       iter: it.descrizioneIter || ''
     };
   }
+  // gruppo: “isc” una riga per iscrizione, “sog” una riga per soggetto, “proc” una cella sola per il procedimento
   const COLONNE = [
-    ['registro', 'Registro', r => r.chiave], ['ufficio', 'Ufficio', r => r.ufficio.toLowerCase()],
-    ['magistrato', 'Magistrato', r => r.magistrato.toLowerCase()], ['soggetti', 'Soggetti', r => r.soggetti.toLowerCase()],
-    ['nomina', 'Nomina', r => iso(r.nomina)], ['stato', 'Stato', r => r.stato.toLowerCase()], ['iter', 'Iter', r => r.iter.toLowerCase()]
+    ['registro', 'Registro', r => r.chiave, 'isc', r => r.linee.map(l => l.reg)],
+    ['ufficio', 'Ufficio', r => r.ufficio.toLowerCase(), 'isc', r => r.linee.map(l => l.uff)],
+    ['magistrato', 'Magistrato', r => r.magistrato.toLowerCase(), 'isc', r => r.linee.map(l => l.mag)],
+    ['iniziali', 'Iniziali', r => r.sogg.map(x => x.abbr).join(' ').toLowerCase(), 'sog', r => r.sogg.map(x => x.abbr)],
+    ['nome', 'Nome', r => (r.nomiTesto.join(' ') || '~').toLowerCase(), 'sog', r => r.sogg.map(x => r.nomiDi(x).join(', '))],
+    ['ruolo', 'Ruolo', r => r.sogg.map(x => x.parte).join(' ').toLowerCase(), 'sog', r => r.sogg.map(x => x.parte)],
+    ['reati', 'Reati contestati', r => (r.reati.join(' ') || '~').toLowerCase(), 'proc', r => r.reati],
+    ['nomina', 'Nomina', r => iso(r.nomina), 'proc', r => [r.nomina]],
+    ['stato', 'Stato', r => r.stato.toLowerCase(), 'proc', r => [r.stato]],
+    ['iter', 'Iter', r => r.iter.toLowerCase(), 'proc', r => [r.iter]]
   ];
 
   function messaggio(t) { if (pannello) pannello.querySelectorAll('[data-m]').forEach(e => { e.textContent = t; }); }
@@ -389,7 +497,17 @@
   }
   function diag() {
     if (!pannello) return;
-    pannello.querySelector('[data-d]').textContent = 'Diagnostica · chiamate viste: ' + D.xhr + ' · elenchi intercettati: ' + D.lista + ' · risposte lette: ' + D.risposte + ' · procedimenti in memoria: ' + D.elementi + ' · ultima POST: ' + (D.post || '-') + (D.errore ? ' · errore: ' + D.errore : '') + ' · richiesta salvata: ' + (LS.get('pstPdpModelli') ? 'sì' : 'no') + ' · aggiornamento: ' + (D.agg || '-') + ' · nomi: ' + (D.nomi || '-') + ' · indirizzo API: ' + (D.host || '-') + (D.det ? ' · dettaglio: ' + D.det : '') + ' · richiesta nomi: ' + (() => { const t = LS.get('pstPdpTemplNomi'); return t ? t.metodo + ' ' + t.url : 'non appresa'; })();
+    pannello.querySelector('[data-d]').textContent = 'Diagnostica · chiamate viste: ' + D.xhr + ' · elenchi intercettati: ' + D.lista + ' · risposte lette: ' + D.risposte + ' · procedimenti in memoria: ' + D.elementi + ' · ultima POST: ' + (D.post || '-') + (D.errore ? ' · errore: ' + D.errore : '') + ' · richiesta salvata: ' + (LS.get('pstPdpModelli') ? 'sì' : 'no') + ' · aggiornamento: ' + (D.agg || '-') + ' · nomi: ' + (D.nomi || '-') + ' · indirizzo API: ' + (D.host || '-') + (D.det ? ' · dettaglio: ' + D.det : '') + ' · reati: ' + infoReati() + ' · richiesta nomi: ' + (() => { const t = LS.get('pstPdpTemplNomi'); return t ? t.metodo + ' ' + t.url : 'non appresa'; })();
+  }
+  // se i reati non si trovano, la diagnostica elenca i nomi dei campi (mai i valori) per capire dove il portale li mette
+  function infoReati() {
+    const el = leggiElenco(); if (!el) return '-';
+    const items = Object.values(el.items); if (!items.length) return '-';
+    const n = items.filter(it => riga(it, null).reati.length).length;
+    if (n) return n + '/' + items.length + ' procedimenti' + (D.colReati ? ' (' + D.colReati + ')' : '');
+    const k = o => o && typeof o === 'object' ? Object.keys(o).join(',') : '-';
+    const it = items[0];
+    return 'non trovati' + (D.colReati ? ' (' + D.colReati + ')' : '') + ' · campi elemento: ' + k(it) + ' · campi iscrizione: ' + k((it.iscrizioniRegistro || [])[0]) + ' · campi soggetto: ' + k((it.inizialiSoggetti || [])[0]);
   }
   function disegnaInt() {
     if (!pannello) return;
@@ -401,62 +519,83 @@
     SS.set('pstPdpFiltro', q);
     LS.set('pstPdpNascondi', nascondi);
     const ord = LS.get('pstPdpOrd') || { c: 'nomina', d: -1 };
-    const col = COLONNE.find(c => c[0] === ord.c) || COLONNE[4];
-    let v = tutte.filter(r => (!nascondi || !r.chiusa) && (!q || (r.registro + ' ' + r.ufficio + ' ' + r.magistrato + ' ' + r.soggetti + ' ' + r.nomina + ' ' + r.stato + ' ' + r.iter).toLowerCase().includes(q)));
+    const col = COLONNE.find(c => c[0] === ord.c) || COLONNE.find(c => c[0] === 'nomina');
+    let v = tutte.filter(r => (!nascondi || !r.chiusa) && (!q || [r.registro, r.linee.map(l => l.uff + ' ' + l.mag).join(' '), r.soggetti, r.nomiTesto.join(' '), r.reati.join(' '), r.nomina, r.stato, r.iter].join(' ').toLowerCase().includes(q)));
     v.sort((a, b) => { const x = col[2](a), y = col[2](b); return (x < y ? -1 : x > y ? 1 : 0) * ord.d; });
     pannello.querySelector('[data-c]').textContent = v.length + ' di ' + tutte.length + ' procedimenti' +
       (el && el.aggiornato ? ' · dati del ' + new Date(el.aggiornato).toLocaleString('it-IT') : '');
     diag();
+    const ko = SS.get('pstPdpNomiKo') || [], boxKo = pannello.querySelector('[data-ko]');
+    boxKo.innerHTML = '';
+    if (ko.length) {
+      const dt = h('details', 'margin-bottom:6px'); dt.appendChild(h('summary', 'cursor:pointer;color:#a60', 'Nomi non letti nell’ultima lettura: ' + ko.length + ' (procedimento · iniziali · motivo)'));
+      ko.forEach(x => dt.appendChild(h('div', 'font-size:12px;color:#445;padding:1px 0 1px 14px', x)));
+      boxKo.appendChild(dt);
+    }
     const t = pannello.querySelector('table');
     t.innerHTML = '';
     const th = t.createTHead().insertRow();
     for (const c of COLONNE) {
-      const h = document.createElement('th');
-      h.textContent = c[1] + (ord.c === c[0] ? (ord.d > 0 ? ' ▲' : ' ▼') : '');
-      h.style.cssText = 'cursor:pointer;text-align:left;border-bottom:2px solid #889;padding:4px;position:sticky;top:0;background:#fff';
-      h.addEventListener('click', () => { LS.set('pstPdpOrd', { c: c[0], d: ord.c === c[0] ? -ord.d : 1 }); disegna(); });
-      th.appendChild(h);
+      const hd = document.createElement('th');
+      hd.textContent = c[1] + (ord.c === c[0] ? (ord.d > 0 ? ' ▲' : ' ▼') : '');
+      hd.style.cssText = 'cursor:pointer;text-align:left;border-bottom:2px solid #889;padding:4px 6px;position:sticky;top:0;background:#fff;white-space:nowrap';
+      hd.addEventListener('click', () => { LS.set('pstPdpOrd', { c: c[0], d: ord.c === c[0] ? -ord.d : 1 }); disegna(); });
+      th.appendChild(hd);
     }
-    th.appendChild(document.createElement('th'));
+    th.appendChild(h('th', 'position:sticky;top:0;background:#fff;border-bottom:2px solid #889'));
     const tb = t.createTBody();
-    for (const r of v) {
-      const tr = tb.insertRow();
-      tr.style.cssText = 'border-bottom:1px solid #ddd' + (r.chiusa ? ';color:#666' : '');
-      tr.addEventListener('dblclick', () => apriScheda(r.id, 'panoramica'));
-      for (const c of COLONNE) {
-        const td = tr.insertCell(); td.style.padding = '4px';
-        if (c[0] === 'registro') {
-          const a = document.createElement('a');
-          a.href = '#'; a.title = 'Apri la scheda del procedimento'; a.textContent = r.registro;
-          a.style.cssText = 'cursor:pointer;color:#14c;font-weight:600;text-decoration:none';
-          a.addEventListener('click', ev => { ev.preventDefault(); apriScheda(r.id, 'panoramica'); });
-          td.appendChild(a); continue;
+    const TD = 'padding:3px 6px;vertical-align:top';
+    v.forEach((r, gi) => {
+      const k = Math.max(r.linee.length, r.sogg.length, 1);
+      const sfondo = gi % 2 ? '#f6f7fb' : '#fff';
+      for (let j = 0; j < k; j++) {
+        const tr = tb.insertRow();
+        tr.style.cssText = 'background:' + sfondo + (j === 0 ? ';border-top:1px solid #b9bfd0' : '') + (r.chiusa ? ';color:#666' : '');
+        tr.addEventListener('dblclick', () => apriScheda(r.id, 'panoramica'));
+        for (const c of COLONNE) {
+          if (c[3] === 'proc' && j > 0) continue;
+          const td = tr.insertCell(); td.style.cssText = TD;
+          if (c[3] === 'proc') {
+            td.rowSpan = k;
+            if (c[0] === 'reati') {
+              td.style.minWidth = '180px';
+              if (!r.reati.length) td.appendChild(h('span', 'color:#aab', '—'));
+              r.reati.forEach(x => td.appendChild(h('div', 'margin-bottom:2px', x)));
+            } else td.textContent = c[4](r)[0];
+            continue;
+          }
+          if (c[3] === 'isc') {
+            const l = r.linee[j]; if (!l) continue;
+            if (c[0] === 'registro') {
+              const a = h('a', 'cursor:pointer;color:#14c;font-weight:600;text-decoration:none;white-space:nowrap', l.reg);
+              a.href = '#'; a.title = 'Apri la scheda del procedimento';
+              a.addEventListener('click', ev => { ev.preventDefault(); apriScheda(r.id, 'panoramica'); });
+              td.appendChild(a);
+            } else td.textContent = c[0] === 'ufficio' ? l.uff : l.mag;
+            continue;
+          }
+          const sg = r.sogg[j];
+          if (!sg) { if (c[0] === 'nome' && j === 0 && r.nomiR['*']) td.textContent = r.nomiR['*'].join(', '); continue; }
+          if (c[0] === 'iniziali') {
+            const a = h('a', 'cursor:pointer;color:#14c;text-decoration:underline dotted;white-space:nowrap', sg.abbr || '?');
+            a.href = '#'; a.title = 'Clic per leggere i nomi';
+            a.addEventListener('click', ev => { ev.preventDefault(); ev.stopPropagation(); un(r.id, sg); });
+            td.appendChild(a);
+          } else if (c[0] === 'nome') {
+            const nn = r.nomiDi(sg);
+            if (nn.length) { td.textContent = nn.join(', '); td.style.fontWeight = '600'; td.style.color = '#111'; }
+            else td.appendChild(h('span', 'color:#aab', 'non letto'));
+          } else td.textContent = sg.parte;
         }
-        if (c[0] !== 'soggetti') { td.textContent = r[c[0]]; continue; }
-        for (const sg of r.sogg) {
-          const d = document.createElement('div');
-          d.style.marginBottom = '3px';
-          const a = document.createElement('a');
-          a.href = '#'; a.title = 'Clic per mostrare nome e cognome';
-          a.textContent = sg.abbr + (sg.parte ? ' (' + sg.parte + ')' : '');
-          a.style.cssText = 'cursor:pointer;color:#14c;text-decoration:underline dotted';
-          a.addEventListener('click', ev => { ev.preventDefault(); ev.stopPropagation(); un(r.id, sg); });
-          d.appendChild(a);
-          const nn = r.nomiDi(sg);
-          if (nn.length) { const n2 = document.createElement('div'); n2.style.cssText = 'font-weight:600;color:#111'; n2.textContent = nn.join(', '); d.appendChild(n2); }
-          td.appendChild(d);
+        if (j > 0) continue;
+        const az = tr.insertCell(); az.rowSpan = k; az.style.cssText = TD + ';white-space:nowrap';
+        for (const [testo, sez] of [['Scheda', 'panoramica'], ['Udienze', 'udienze'], ['Depositi', 'depositi']]) {
+          const b = h('button', 'margin-right:4px;cursor:pointer', testo);
+          b.addEventListener('click', () => apriScheda(r.id, sez));
+          az.appendChild(b);
         }
-        if (r.nomiR['*']) { const d = document.createElement('div'); d.style.fontWeight = '600'; d.textContent = r.nomiR['*'].join(', '); td.appendChild(d); }
       }
-      const az = tr.insertCell();
-      for (const [testo, sez] of [['Scheda', 'panoramica'], ['Stato', 'stato'], ['Depositi', 'depositi']]) {
-        const b = document.createElement('button');
-        b.textContent = testo;
-        b.style.cssText = 'margin-right:4px;cursor:pointer';
-        b.addEventListener('click', () => apriScheda(r.id, sez));
-        az.appendChild(b);
-      }
-    }
+    });
     pannello.__righe = v;
   }
 
@@ -544,8 +683,7 @@
     document.body.appendChild(barra);
     const esiti = []; let passi = 0;
     try {
-      const ld = document.querySelector('a[href*="definiti"]'), href = ld && ld.getAttribute('href');
-      const rotte = [['attivi', PERC + 'procedimenti-autorizzati'], ['definiti', href || PERC + 'procedimenti-autorizzati-definiti']];
+      const rotte = [['attivi', rottaLista('attivi')], ['definiti', rottaLista('definiti')]];
       for (const [lista, rotta] of rotte) {
         if (stop) break;
         tx.textContent = 'Controllo novità: ' + NOME_LISTA[lista] + '…';
@@ -553,7 +691,7 @@
         history.pushState({}, '', rotta); passi++;
         window.dispatchEvent(new PopStateEvent('popstate', { state: {} }));
         // si attende che l’applicazione abbia ricevuto l’elenco della nuova pagina, non solo che ci siano righe (potrebbero essere quelle della pagina precedente)
-        if (!(await finche(() => document.querySelector(SEL_LISTA) && Object.keys(MEM.visti || {}).length, 20000, 250))) { esiti.push('elenco dei ' + NOME_LISTA[lista] + ' non raggiunto'); MEM.visti = null; continue; }
+        if (!(await finche(() => righeLista().length && Object.keys(MEM.visti || {}).length, 20000, 250))) { esiti.push('elenco dei ' + NOME_LISTA[lista] + ' non raggiunto'); MEM.visti = null; continue; }
         await attendi(1200);
         const prima = MEM.visti; MEM.visti = {};   // la pagina può aver fatto più richieste: si riparte da zero e si rilegge dalla prima pagina
         const r = await scorri(() => !stop, p => { tx.textContent = 'Controllo novità: ' + NOME_LISTA[lista] + ', pagina ' + p + '…'; });
@@ -649,7 +787,11 @@
   }
 
   // ---------- scheda del procedimento ----------
-  const SEZIONI = [['panoramica', 'Panoramica'], ['soggetti', 'Soggetti'], ['iscrizioni', 'Iscrizioni'], ['stato', 'Stato'], ['depositi', 'Depositi'], ['completi', 'Dati completi']];
+  const SEZIONI = [['panoramica', 'Panoramica'], ['soggetti', 'Soggetti'], ['iscrizioni', 'Iscrizioni'], ['udienze', 'Udienze'], ['sentenze', 'Sentenze'], ['impugnazioni', 'Impugnazioni'], ['depositi', 'Depositi'], ['completi', 'Dati completi']];
+  // udienze, sentenze e impugnazioni provengono tutte dalla pagina “Stato” del portale; i depositi dalla loro pagina
+  const FONTE = { udienze: 'stato', sentenze: 'stato', impugnazioni: 'stato', depositi: 'depositi' };
+  const fonteDi = sez => FONTE[sez] || null;
+  const NOME_FONTE = { stato: 'stato del procedimento', depositi: 'depositi' };
   const ROTTE = { stato: id => PERC + 'procedimenti-autorizzati/' + id + '/procedimento-stato', depositi: id => PERC + 'depositi/' + id };
   const h = (tag, css, testo) => { const e = document.createElement(tag); if (css) e.style.cssText = css; if (testo != null) e.textContent = testo; return e; };
   const BTN = 'padding:5px 12px;cursor:pointer;border:1px solid #9aa;background:#f4f5fa;border-radius:5px;font:inherit';
@@ -703,11 +845,13 @@
   function apriScheda(id, sez) {
     if (!pannello) return;
     if (vista.tipo !== 'scheda') pannello.__scroll = pannello.scrollTop;
+    if (sez === 'stato') sez = 'udienze';
     vista = { tipo: 'scheda', id, sez: sez || 'panoramica' };
     SS.set('pstPdpVista', vista);
     disegna();
     pannello.scrollTop = 0;
-    if (ROTTE[vista.sez] && !(MEM.sez[id] || {})[vista.sez]) leggiSezione(id, vista.sez);
+    const f = fonteDi(vista.sez);
+    if (f && !(MEM.sez[id] || {})[f]) leggiSezione(id, f);
   }
   function tornaElenco() {
     vista = { tipo: 'elenco' };
@@ -717,7 +861,8 @@
   }
   function vaiSezione(sez) {
     vista.sez = sez; SS.set('pstPdpVista', vista); disegna();
-    if (ROTTE[sez] && !(MEM.sez[vista.id] || {})[sez]) leggiSezione(vista.id, sez);
+    const f = fonteDi(sez);
+    if (f && !(MEM.sez[vista.id] || {})[f]) leggiSezione(vista.id, f);
   }
 
   // Stato e Depositi: l’estensione apre la pagina nell’applicazione sotto il pannello, ne legge le risposte e torna indietro
@@ -726,7 +871,7 @@
     caricando = sez + id;
     const voci = []; MEM.cat = voci;
     const attendi = ms => new Promise(ok => setTimeout(ok, ms));
-    messaggio('Lettura di “' + sez + '” dal portale…');
+    messaggio('Lettura di “' + (NOME_FONTE[sez] || sez) + '” dal portale…');
     disegnaScheda();
     try {
       history.pushState({}, '', ROTTE[sez](id));
@@ -842,44 +987,85 @@
     return out;
   }
   // oggetti annidati che hanno i campi indicati, con il nome del soggetto a cui appartengono
-  function trovaOggetti(v, test, ctx, out) {
-    const nome = o => ['cognome', 'nome', 'denominazione', 'nominativo', 'abbreviazione'].map(k => o[k]).filter(x => x && typeof x !== 'object').join(' ');
-    if (Array.isArray(v)) v.forEach(x => trovaOggetti(x, test, ctx, out));
+  const nomeOgg = o => ['nome', 'cognome', 'denominazione', 'nominativo', 'abbreviazione'].map(k => o[k]).filter(x => x && typeof x !== 'object').join(' ');
+  const ruoloOgg = o => ['descrizioneTipoParte', 'tipoParte', 'descrizioneRuolo', 'ruolo', 'descrizioneTipoSoggetto'].map(k => o[k]).find(x => x && typeof x !== 'object') || '';
+  function trovaOggetti(v, test, ctx, out, so) {
+    if (Array.isArray(v)) v.forEach(x => trovaOggetti(x, test, ctx, out, so));
     else if (v && typeof v === 'object') {
-      const c = nome(v) || ctx;
-      if (test(v)) out.push({ o: v, s: c });
-      else Object.keys(v).forEach(k => { if (v[k] && typeof v[k] === 'object') trovaOggetti(v[k], test, c, out); });
+      const n = nomeOgg(v), c = n || ctx, s2 = n ? v : so;
+      if (test(v)) out.push({ o: v, s: c, so: s2 || null });
+      else Object.keys(v).forEach(k => { if (v[k] && typeof v[k] === 'object') trovaOggetti(v[k], test, c, out, s2); });
     }
     return out;
   }
-  function renderEsiti(id) {
+  // impugnazioni: elementi sotto chiavi che parlano di impugnazione, oppure oggetti con campi propri dell’impugnazione
+  function trovaImpugnazioni(v, ctx, so, out, visti) {
+    out = out || []; visti = visti || new Set();
+    const metti = (o, c, s2, sent) => { if (o && typeof o === 'object' && !Array.isArray(o) && !visti.has(o)) { visti.add(o); out.push({ o, s: c, so: s2 || null, sent: sent || null }); } };
+    if (Array.isArray(v)) { v.forEach(x => trovaImpugnazioni(x, ctx, so, out, visti)); return out; }
+    if (!v || typeof v !== 'object') return out;
+    const n = nomeOgg(v), c = n || ctx, s2 = n ? v : so;
+    if (Object.keys(v).some(k => /impugn/i.test(k) && (v[k] == null || typeof v[k] !== 'object') && !vuoto(v[k]))) metti(v, c, s2);
+    for (const k of Object.keys(v)) {
+      const x = v[k]; if (!x || typeof x !== 'object') continue;
+      if (/impugn/i.test(k)) { (Array.isArray(x) ? x : [x]).forEach(e => { if (e && typeof e === 'object' && !Array.isArray(e)) metti(e, c, s2, ('numeroSentenza' in v) ? v : null); }); }
+      else trovaImpugnazioni(x, c, s2, out, visti);
+    }
+    return out;
+  }
+  // reati del soggetto (o dell’oggetto stesso); in mancanza quelli del procedimento, segnalati come tali
+  function reatiPer(x, r) {
+    const a = reatiIn(x.o); if (a.length) return a.join('; ');
+    const b = x.so ? reatiIn(x.so) : []; if (b.length) return b.join('; ');
+    return r && r.reati.length ? r.reati.join('; ') + ' (del procedimento)' : '';
+  }
+  // tabella generica: colonne fisse più tutti i campi semplici degli oggetti; clic su una riga per vedere ogni dato
+  function tabellaOggetti(lista, fisse, saltaCampi) {
+    const extra = [];
+    lista.forEach(x => Object.keys(x.o).forEach(k => { if (saltaCampi.indexOf(k) < 0 && !vuoto(x.o[k]) && typeof x.o[k] !== 'object' && extra.indexOf(k) < 0 && !/^(id|identificativ)/i.test(k)) extra.push(k); }));
+    const nc = fisse.length + extra.length;
+    return tabellaDati(fisse.map(f => f[0]).concat(extra.map(umano)), lista, (tb, x) => {
+      const tr = tb.insertRow(); tr.style.cssText = 'border-bottom:1px solid #e3e3ea;cursor:pointer;vertical-align:top';
+      fisse.map(f => f[1](x)).concat(extra.map(k => vuoto(x.o[k]) ? '' : valore(x.o[k]))).forEach(t => { const td = tr.insertCell(); td.style.padding = '5px 8px'; td.textContent = t == null ? '' : String(t); });
+      let det = null;
+      tr.addEventListener('click', () => {
+        if (det) { det.remove(); det = null; return; }
+        det = tb.insertRow(tr.sectionRowIndex + 1);
+        const c = det.insertCell(); c.colSpan = nc; c.style.cssText = 'padding:8px 14px;background:#fafbfe'; c.appendChild(albero(x.o));
+      });
+    });
+  }
+  function renderSentenze(id, r) {
     const w = h('div');
     const sg = soggettiStato(id), es = cercaEsiti(id);
-    w.appendChild(h('div', 'font-weight:600;margin:16px 0 6px', 'Sentenze e impugnazioni'));
     const sent = trovaOggetti(sg, o => ('numeroSentenza' in o || 'annoSentenza' in o || 'codiceGrado' in o), '', []);
-    const imp = trovaOggetti(sg, o => Object.keys(o).some(k => /impugn/i.test(k) && !/^\d+$/.test(k)) && !('numeroSentenza' in o), '', []);
-    const note = [];
+    const DATE = [['dataPrevistoDeposito', 'Deposito previsto'], ['dataProrogaSentenza', 'Deposito prorogato'], ['dataDepositoSentenza', 'Depositata il'], ['dataIrrevocabilita', 'Irrevocabile dal']];
     if (sent.length) {
-      const DATE = [['dataPrevistoDeposito', 'Deposito previsto'], ['dataProrogaSentenza', 'Deposito prorogato'], ['dataDepositoSentenza', 'Depositata il'], ['dataIrrevocabilita', 'Irrevocabile dal']];
-      const usati = new Set(['numeroSentenza', 'annoSentenza', 'codiceGrado'].concat(DATE.map(d => d[0])));
-      const extra = []; sent.forEach(x => Object.keys(x.o).forEach(k => { if (!usati.has(k) && !vuoto(x.o[k]) && typeof x.o[k] !== 'object' && extra.indexOf(k) < 0) extra.push(k); }));
-      w.appendChild(tabellaDati(['Soggetto', 'Grado', 'Sentenza n.', 'Anno'].concat(DATE.map(d => d[1]), extra.map(umano)), sent, (tb, x) => {
-        const tr = tb.insertRow(); tr.style.borderBottom = '1px solid #e3e3ea';
-        [x.s, x.o.codiceGrado, x.o.numeroSentenza, x.o.annoSentenza].concat(DATE.map(d => x.o[d[0]] ? fmtDT(x.o[d[0]]) : ''), extra.map(k => valore(x.o[k]))).forEach(t => { const td = tr.insertCell(); td.style.padding = '5px 8px'; td.textContent = t == null ? '' : String(t); });
-      }));
-    } else note.push('Nessuna sentenza registrata per i soggetti di questo procedimento.');
-    if (imp.length) {
-      w.appendChild(h('div', 'font-weight:600;margin:12px 0 4px', 'Impugnazioni'));
-      imp.forEach(x => { const b = h('div', 'border:1px solid #d5d9e6;border-radius:8px;padding:6px 12px;margin-top:4px'); if (x.s) b.appendChild(h('div', 'color:#667;font-size:12px', x.s)); b.appendChild(albero(x.o)); w.appendChild(b); });
-    }
-    if (es.length) { w.appendChild(h('div', 'font-weight:600;margin:12px 0 4px', 'Altri campi su esiti e provvedimenti')); w.appendChild(coppie(es)); }
-    if (!sg.length) note.push('Il portale non restituisce l’elenco dei soggetti nello Stato di questo procedimento.');
-    note.forEach(t => w.appendChild(h('div', 'color:#667;margin-top:4px', t)));
+      w.appendChild(h('div', 'color:#667;font-size:12px;margin-bottom:6px', sent.length + ' sentenze · clic su una riga per tutti i dati'));
+      w.appendChild(tabellaOggetti(sent, [
+        ['Soggetto', x => x.s], ['Ruolo', x => x.so ? ruoloOgg(x.so) : ''], ['Reati contestati', x => reatiPer(x, r)],
+        ['Grado', x => x.o.codiceGrado], ['Sentenza n.', x => x.o.numeroSentenza], ['Anno', x => x.o.annoSentenza]
+      ].concat(DATE.map(d => [d[1], x => x.o[d[0]] ? fmtDT(x.o[d[0]]) : ''])), ['numeroSentenza', 'annoSentenza', 'codiceGrado'].concat(DATE.map(d => d[0]))));
+    } else w.appendChild(h('div', 'color:#667;padding:6px 0', sg.length ? 'Nessuna sentenza registrata per i soggetti di questo procedimento.' : 'Il portale non restituisce l’elenco dei soggetti nello Stato di questo procedimento.'));
+    if (es.length) { w.appendChild(h('div', 'font-weight:600;margin:14px 0 4px', 'Altri campi su esiti e provvedimenti')); w.appendChild(coppie(es)); }
     if (sg.length) {
       const dt = h('details', 'margin-top:10px'); dt.appendChild(h('summary', 'cursor:pointer;color:#445', 'Tutti i dati dei soggetti dello Stato'));
       sg.forEach(x => { const b = h('div', 'border:1px solid #d5d9e6;border-radius:8px;padding:8px 14px;margin-top:6px'); b.appendChild(albero(x)); dt.appendChild(b); });
       w.appendChild(dt);
     }
+    return w;
+  }
+  function renderImpugnazioni(id, r) {
+    const w = h('div');
+    const sg = soggettiStato(id);
+    const imp = trovaImpugnazioni(sg, '', null);
+    if (imp.length) {
+      w.appendChild(h('div', 'color:#667;font-size:12px;margin-bottom:6px', imp.length + ' impugnazioni · clic su una riga per tutti i dati'));
+      w.appendChild(tabellaOggetti(imp, [
+        ['Soggetto', x => x.s], ['Ruolo', x => x.so ? ruoloOgg(x.so) : ''], ['Reati contestati', x => reatiPer(x, r)],
+        ['Sentenza impugnata', x => { const z = x.o.numeroSentenza ? x.o : x.sent; return z && z.numeroSentenza ? z.numeroSentenza + (z.annoSentenza ? '/' + z.annoSentenza : '') + (z.codiceGrado ? ' (grado ' + z.codiceGrado + ')' : '') : ''; }]
+      ], ['numeroSentenza', 'annoSentenza']));
+    } else w.appendChild(h('div', 'color:#667;padding:6px 0', sg.length ? 'Nessuna impugnazione registrata per i soggetti di questo procedimento.' : 'Il portale non restituisce l’elenco dei soggetti nello Stato di questo procedimento.'));
     return w;
   }
 
@@ -932,14 +1118,18 @@
       const tile = (t, sotto, s) => { const b = h('button', 'text-align:left;padding:10px 14px;border:1px solid #b9c0d4;border-radius:8px;background:#f7f8fc;cursor:pointer;min-width:170px;font:inherit'); b.appendChild(h('div', 'font-weight:600', t)); b.appendChild(h('div', 'color:#667;font-size:12px;margin-top:2px', sotto)); b.addEventListener('click', () => vaiSezione(s)); return b; };
       tiles.appendChild(tile('Soggetti', r.sogg.length + ' · nomi letti ' + nl + '/' + r.sogg.length, 'soggetti'));
       tiles.appendChild(tile('Iscrizioni', (it.iscrizioniRegistro || []).length + ' registri', 'iscrizioni'));
-      const ud = udienzeDi(id), dp = (MEM.sez[id] || {}).depositi ? depositiDi(id) : null;
-      tiles.appendChild(tile('Stato e udienze', it.abilitaVisulizzazioneStato === false ? 'non abilitato dal portale' : (ud ? ud.length + ' udienze' : 'da leggere'), 'stato'));
+      const ud = udienzeDi(id), dp = (MEM.sez[id] || {}).depositi ? depositiDi(id) : null, st = (MEM.sez[id] || {}).stato;
+      const noSt = it.abilitaVisulizzazioneStato === false ? 'non abilitato dal portale' : null;
+      tiles.appendChild(tile('Udienze', noSt || (ud ? ud.length + ' udienze' : 'da leggere'), 'udienze'));
+      const sgS = st ? soggettiStato(id) : [];
+      tiles.appendChild(tile('Sentenze', noSt || (st ? trovaOggetti(sgS, o => ('numeroSentenza' in o || 'annoSentenza' in o || 'codiceGrado' in o), '', []).length + ' sentenze' : 'da leggere'), 'sentenze'));
+      tiles.appendChild(tile('Impugnazioni', noSt || (st ? trovaImpugnazioni(sgS, '', null).length + ' impugnazioni' : 'da leggere'), 'impugnazioni'));
       tiles.appendChild(tile('Depositi', dp ? dp.length + ' depositi' : 'da leggere', 'depositi'));
       tiles.appendChild(tile('Dati completi', 'ogni campo restituito dal portale', 'completi'));
       w.appendChild(tiles);
       const url = it.urlDisponibilitaAtti ? (() => { const a = h('a', 'color:#14c', it.urlDisponibilitaAtti); a.href = it.urlDisponibilitaAtti; a.target = '_blank'; a.rel = 'noopener'; return a; })() : null;
       w.appendChild(coppie([
-        ['Stato del procedimento', r.stato], ['Iter', it.descrizioneIter ? it.descrizioneIter + (it.codiceIter ? ' (' + it.codiceIter + ')' : '') : null],
+        ['Stato del procedimento', r.stato], ['Reati contestati', r.reati.length ? r.reati.join('; ') : null], ['Iter', it.descrizioneIter ? it.descrizioneIter + (it.codiceIter ? ' (' + it.codiceIter + ')' : '') : null],
         ['Data di nomina', fmtDT(it.dataNomina)], ['Data di definizione', fmtDT(it.dataDefinizione)], ['Ruolo del difensore', it.codiceTipoLegale],
         ['Avvocatura', it.descrizioneAvvocatura], ['Accesso agli atti', [it.descrizioneStatoAccessoAtti, it.codiceStatoAccessoAtti != null ? 'codice ' + it.codiceStatoAccessoAtti : ''].filter(Boolean).join(' · ')],
         ['Atti disponibili fino al', fmtDT(it.dataScadenzaDisponibilitaAtti)], ['Indirizzo per gli atti', url],
@@ -981,20 +1171,24 @@
       w.appendChild(h('div', 'color:#667;margin-bottom:8px', 'Tutti i campi che il portale restituisce per questo procedimento nell’elenco, compresi quelli che l’applicazione non mostra.'));
       w.appendChild(albero(it));
       if (Object.keys(dettagli).length) { w.appendChild(h('div', 'margin:14px 0 4px;font-weight:600', 'Anagrafiche dei soggetti già lette')); w.appendChild(albero(dettagli)); }
-    } else if (ROTTE[sez]) {
-      const c = (MEM.sez[id] || {})[sez];
+    } else if (fonteDi(sez)) {
+      const f = fonteDi(sez), c = (MEM.sez[id] || {})[f];
       const barra = h('div', 'display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:8px');
-      if (caricando === sez + id) { w.appendChild(h('div', 'padding:14px;color:#556', 'Lettura in corso dal portale…')); return w; }
-      barra.appendChild(pulsante(c ? 'Rileggi' : 'Leggi dal portale', () => leggiSezione(id, sez)));
-      barra.appendChild(pulsante('Apri nella pagina originale', () => vai(ROTTE[sez](id))));
-      if (c && c.voci.length) barra.appendChild(pulsante('Salva struttura dati', () => salvaForma(sez, c)));
-      if (c) barra.appendChild(h('span', 'color:#778;font-size:12px', 'Letto il ' + new Date(c.ora).toLocaleString('it-IT') + ' · ' + c.voci.length + ' chiamate' + (sez === 'stato' && D.storico ? ' · storico udienze: ' + D.storico : '')));
+      if (caricando === f + id) { w.appendChild(h('div', 'padding:14px;color:#556', 'Lettura in corso dal portale…')); return w; }
+      barra.appendChild(pulsante(c ? 'Rileggi' : 'Leggi dal portale', () => leggiSezione(id, f)));
+      barra.appendChild(pulsante('Apri nella pagina originale', () => vai(ROTTE[f](id))));
+      if (c && c.voci.length) barra.appendChild(pulsante('Salva struttura dati', () => salvaForma(f, c)));
+      if (c) barra.appendChild(h('span', 'color:#778;font-size:12px', 'Letto il ' + new Date(c.ora).toLocaleString('it-IT') + ' · ' + c.voci.length + ' chiamate' + (f === 'stato' && D.storico ? ' · storico udienze: ' + D.storico : '')));
       w.appendChild(barra);
       if (c && !c.voci.length) w.appendChild(h('div', 'color:#a60', 'Nessuna risposta ricevuta dal portale per questa sezione.'));
       if (c && c.voci.length) {
-        const ud = sez === 'stato' ? udienzeDi(id) : null;
-        if (sez === 'stato') { w.appendChild(h('div', 'font-weight:600;margin:6px 0', 'Udienze'));
-          w.appendChild(h('div', 'color:#667;font-size:12px;margin-bottom:6px', 'Udienze fissate e storico udienze del portale. Quelle già lette in precedenza restano anche in questo browser.')); w.appendChild(ud ? renderUdienze(ud) : h('div', 'color:#667', 'Il portale non ha restituito l’elenco delle udienze.')); w.appendChild(renderEsiti(id)); }
+        if (sez === 'udienze') {
+          const ud = udienzeDi(id);
+          w.appendChild(h('div', 'color:#667;font-size:12px;margin-bottom:6px', 'Udienze fissate e storico udienze del portale. Quelle già lette in precedenza restano anche in questo browser.'));
+          w.appendChild(ud ? renderUdienze(ud) : h('div', 'color:#667', 'Il portale non ha restituito l’elenco delle udienze.'));
+        }
+        if (sez === 'sentenze') w.appendChild(renderSentenze(id, r));
+        if (sez === 'impugnazioni') w.appendChild(renderImpugnazioni(id, r));
         if (sez === 'depositi') w.appendChild(renderDepositi(depositiDi(id)));
         const dt = h('details', 'margin-top:16px'); dt.appendChild(h('summary', 'cursor:pointer;color:#445', 'Risposte complete del portale (' + c.voci.length + ' chiamate)'));
         w.appendChild(dt);
@@ -1004,12 +1198,6 @@
           b.appendChild(albero(corpoDi(v.risp)));
           dt.appendChild(b);
         }
-      }
-      if (false) for (const v of c.voci) {
-        w.appendChild(h('div', 'color:#889;font-size:11px;margin-top:12px', v.m + ' …' + v.u.split('/').slice(-4).join('/') + ' · stato ' + v.stato));
-        const b = h('div', 'border:1px solid #d5d9e6;border-radius:8px;padding:8px 14px;margin-top:2px');
-        b.appendChild(albero(corpoDi(v.risp)));
-        w.appendChild(b);
       }
     }
     return w;
@@ -1062,74 +1250,86 @@
 
   async function un() { return tutti(); }
   let inCorso = false;
-  // i nomi si leggono facendo cliccare le iniziali nell’elenco originale: la richiesta la fa l’applicazione (il portale rifiuta le richieste proprie)
+  // i nomi si leggono facendo cliccare le iniziali nell’elenco originale: la richiesta la fa l’applicazione (il portale rifiuta le richieste proprie).
+  // L’estensione apre da sé l’elenco dei procedimenti autorizzati e poi quello dei definiti, sotto il pannello.
   async function tutti() {
     if (inCorso) { inCorso = false; return; }
-    const SEL_RIGHE = 'app-procedimenti-view tbody.ui-table-tbody > tr.ui-selectable-row';
-    if (!document.querySelector(SEL_RIGHE)) { messaggio('L’elenco originale non è presente in questa pagina: apri “Procedimenti autorizzati” e riprova.'); return; }
-    const mancanti = (pannello.__righe || []).some(r => r.sogg.some(sg => !r.nomiDi(sg).length));
-    if ((pannello.__righe || []).length && !mancanti) { messaggio('Tutti i nomi sono già in memoria.'); return; }
+    if (caricando || aggInCorso || ctlInCorso) { messaggio('Attendi la fine dell’operazione in corso.'); return; }
+    const nomiTutti = () => SS.get('pstPdpNomi') || {};
+    const completo = it => { const r = riga(it, nomiTutti()); return r.sogg.every(sg => r.nomiDi(sg).length); };
+    const el0 = leggiElenco();
+    if (el0 && Object.keys(el0.items).length && Object.values(el0.items).every(completo)) { messaggio('Tutti i nomi sono già in memoria.'); return; }
     inCorso = true;
     const bt = pannello.querySelector('[data-t]'); bt.textContent = 'Interrompi';
-    const attendi = ms => new Promise(ok => setTimeout(ok, ms));
-    const finche = async (f, max, passo) => { const t0 = Date.now(); while (Date.now() - t0 < (max || 4000)) { try { const v = f(); if (v) return v; } catch (e) {} await attendi(passo || 100); } return null; };
-    const firma = () => Array.from(document.querySelectorAll(SEL_RIGHE)).map(r => r.textContent).join('|');
     const dlgAperto = () => document.querySelector('.ui-dialog #cognome_controlId, .ui-dialog #denominazione_controlId');
-    let letti = 0, errori = 0, pagina = 1; const falliti = [];
+    const campi = () => ['cognome', 'nome', 'denominazione'].map(n => { const e = document.querySelector('.ui-dialog #' + n + '_controlId'); return e ? String(e.value || '').trim() : ''; });
+    const chiudiDlg = async () => {
+      const ch = Array.from(document.querySelectorAll('.ui-dialog button')).find(x => (x.textContent || '').trim() === 'Chiudi');
+      if (ch) ch.click();
+      else { const x = document.querySelector('.ui-dialog .ui-dialog-titlebar-close'); if (x) x.click(); }
+      await finche(() => !dlgAperto(), 3000);
+      await attendi(150);
+    };
+    const firma = () => righeLista().map(r => r.textContent).join('|');
+    let letti = 0, errori = 0, saltati = 0, pagine = 0; const falliti = [], note = [];
     try {
-      const primo = document.querySelector('p-paginator .ui-paginator-first');
-      if (primo && !primo.classList.contains('ui-state-disabled')) { const f0 = firma(); primo.click(); await finche(() => firma() !== f0, 4000); await attendi(300); }
-      while (inCorso) {
-        const righe = Array.from(document.querySelectorAll(SEL_RIGHE));
-        for (const r of righe) {
-          if (!inCorso) break;
-          for (const a of Array.from(r.querySelectorAll('app-soggetti-iniziali a.cursor-pointer'))) {
+      for (const lista of ['attivi', 'definiti']) {
+        if (!inCorso) break;
+        messaggio('Apro l’elenco dei ' + NOME_LISTA[lista] + '…');
+        if (!(await assicuraLista(lista))) { note.push('elenco dei ' + NOME_LISTA[lista] + ' non raggiunto'); continue; }
+        const primo = document.querySelector('p-paginator .ui-paginator-first');
+        if (primo && !primo.classList.contains('ui-state-disabled')) { const f0 = firma(); primo.click(); await finche(() => firma() !== f0, 4000); await attendi(300); }
+        let pagina = 1;
+        while (inCorso) {
+          pagine++;
+          leggiReatiDom();
+          for (const r of righeLista()) {
             if (!inCorso) break;
-            const campi = () => ['cognome', 'nome', 'denominazione'].map(n => { const e = document.querySelector('.ui-dialog #' + n + '_controlId'); return e ? String(e.value || '').trim() : ''; });
-            const chiudiDlg = async () => {
-              const ch = Array.from(document.querySelectorAll('.ui-dialog button')).find(x => (x.textContent || '').trim() === 'Chiudi');
-              if (ch) ch.click();
-              await finche(() => !dlgAperto(), 3000);
-              await attendi(150);
-            };
-            const r0 = D.nomResp, o0 = D.nomOk, v0 = D.nomVuote || 0;
-            let aperta = false, risposta = false;
-            for (let prova = 0; prova < 2 && !risposta; prova++) {
-              a.click();
-              aperta = !!(await finche(() => dlgAperto(), 4000));
-              risposta = !!(await finche(() => D.nomResp > r0 || campi().some(Boolean), 8000));
-              if (!risposta) await chiudiDlg();
+            const it = itemDiRiga(r);
+            if (it && completo(it)) { saltati++; continue; }
+            const etichetta = it ? riga(it, null).registro : (r.cells[0] ? r.cells[0].textContent.replace(/\s+/g, ' ').trim().slice(0, 40) : '?');
+            for (const a of Array.from(r.querySelectorAll('app-soggetti-iniziali a'))) {
+              if (!inCorso) break;
+              const r0 = D.nomResp, o0 = D.nomOk, v0 = D.nomVuote || 0;
+              let aperta = false, risposta = false;
+              for (let prova = 0; prova < 2 && !risposta; prova++) {
+                a.click();
+                aperta = !!(await finche(() => dlgAperto(), 4000));
+                risposta = !!(await finche(() => D.nomResp > r0 || campi().some(Boolean), 8000));
+                if (!risposta) await chiudiDlg();
+              }
+              await attendi(250);
+              const ok = D.nomOk > o0 || campi().some(Boolean);
+              if (ok) letti++;
+              else {
+                errori++;
+                const motivo = !aperta ? 'finestra non aperta' : !risposta ? 'nessuna risposta del portale' : (D.nomSt && D.nomSt !== 200) ? 'risposta ' + D.nomSt : (D.nomVuote || 0) > v0 ? 'il portale non indica il nome' : 'nome non riconosciuto';
+                falliti.push(etichetta + ' · ' + (a.textContent || '').trim() + ' · ' + motivo);
+              }
+              await chiudiDlg();
+              messaggio('Nomi letti: ' + letti + ' · ' + NOME_LISTA[lista] + ', pagina ' + pagina + (errori ? ' · non letti: ' + errori : ''));
             }
-            await attendi(250);
-            const ok = D.nomOk > o0 || campi().some(Boolean);
-            if (ok) letti++;
-            else {
-              errori++;
-              const motivo = !aperta ? 'finestra non aperta' : !risposta ? 'nessuna risposta del portale' : (D.nomSt && D.nomSt !== 200) ? 'risposta ' + D.nomSt : (D.nomVuote || 0) > v0 ? 'il portale non indica il nome' : 'nome non riconosciuto';
-              falliti.push((r.cells[0] ? r.cells[0].textContent.replace(/\s+/g, ' ').trim().slice(0, 40) : '?') + ' · ' + (a.textContent || '').trim() + ' · ' + motivo);
-            }
-            await chiudiDlg();
-            messaggio('Nomi letti: ' + letti + ' (pagina ' + pagina + ')' + (errori ? ' · errori: ' + errori : ''));
           }
+          disegna();
+          const next = document.querySelector('p-paginator .ui-paginator-next');
+          if (!inCorso || !next || next.classList.contains('ui-state-disabled')) break;
+          const f1 = firma(); next.click();
+          if (!(await finche(() => firma() !== f1, 6000))) { note.push(NOME_LISTA[lista] + ': la pagina ' + (pagina + 1) + ' non si è caricata'); break; }
+          await attendi(300); pagina++;
         }
-        disegna();
-        const next = document.querySelector('p-paginator .ui-paginator-next');
-        if (!inCorso || !next || next.classList.contains('ui-state-disabled')) break;
-        const f1 = firma(); next.click();
-        if (!(await finche(() => firma() !== f1, 6000))) break;
-        await attendi(300); pagina++;
       }
-    } catch (e) { messaggio('Interrotto: ' + e.message); inCorso = false; }
+    } catch (e) { note.push('interrotto: ' + e.message); }
+    const interrotto = !inCorso;
     inCorso = false; bt.textContent = 'Carica tutti i nomi';
     SS.set('pstPdpNomiKo', falliti);
-    messaggio('Nomi letti: ' + letti + ' su ' + pagina + ' pagine' + (errori ? ' · non letti: ' + errori + ' (' + falliti.slice(0, 6).join(' | ') + (falliti.length > 6 ? ' | …' : '') + ')' : '') + '. I procedimenti definiti e archiviati si leggono dalla pagina “Procedimenti definiti”.');
+    messaggio((interrotto ? 'Interrotto. ' : '') + 'Nomi letti: ' + letti + ' · procedimenti già completi saltati: ' + saltati + ' · pagine: ' + pagine + (errori ? ' · non letti: ' + errori : '') + (note.length ? ' · ' + note.join(' · ') : ''));
     disegna();
   }
 
   function csv() {
     const v = pannello.__righe || [];
-    const e = s => '"' + String(s).replace(/"/g, '""') + '"';
-    const testo = [COLONNE.map(c => e(c[1])).join(';')].concat(v.map(r => COLONNE.map(c => e(r[c[0]])).join(';'))).join('\r\n');
+    const e = x => '"' + String(x == null ? '' : x).replace(/"/g, '""') + '"';
+    const testo = [COLONNE.map(c => e(c[1])).join(';')].concat(v.map(r => COLONNE.map(c => e(c[4](r).join('\n'))).join(';'))).join('\r\n');
     const a = document.createElement('a');
     a.href = URL.createObjectURL(new Blob(['﻿' + testo], { type: 'text/csv;charset=utf-8' }));
     a.download = 'procedimenti_pdp_' + new Date().toISOString().slice(0, 10) + '.csv';
@@ -1161,7 +1361,7 @@
       '<label><input data-n type="checkbox"> nascondi definiti e archiviati</label>' +
       '<button data-nv>Novità</button><button data-a>Aggiorna</button><button data-t>Carica tutti i nomi</button><button data-s>Esporta CSV</button><button data-v>Svuota copia locale</button>' +
       '<button data-x style="margin-left:auto">Chiudi</button></div>' +
-      '<div data-c style="margin-bottom:4px"></div><div data-d style="color:#888;font-size:11px;margin-bottom:4px"></div><div data-m style="color:#a00;margin-bottom:4px"></div>' +
+      '<div data-c style="margin-bottom:4px"></div><div data-d style="color:#888;font-size:11px;margin-bottom:4px"></div><div data-m style="color:#a00;margin-bottom:4px"></div><div data-ko></div>' +
       '<table style="border-collapse:collapse;width:100%"></table></div><div data-sc style="display:none"></div>';
     document.body.appendChild(pannello);
     pannello.querySelector('[data-q]').value = SS.get('pstPdpFiltro') || '';
@@ -1173,14 +1373,14 @@
     pannello.querySelector('[data-s]').addEventListener('click', csv);
     pannello.querySelector('[data-t]').addEventListener('click', tutti);
     pannello.querySelector('[data-x]').addEventListener('click', chiudi);
-    pannello.querySelector('[data-v]').addEventListener('click', () => { MEM.el = null; MEM.sez = {}; vista = { tipo: 'elenco' }; SS.del('pstPdpVista'); SS.del('pstPdpSez'); SS.del('pstPdpSogg'); SS.del('pstPdpElenco'); SS.del('pstPdpFiltro'); SS.del('pstPdpNomi'); disegna(); });
+    pannello.querySelector('[data-v]').addEventListener('click', () => { MEM.el = null; MEM.sez = {}; vista = { tipo: 'elenco' }; SS.del('pstPdpVista'); SS.del('pstPdpSez'); SS.del('pstPdpSogg'); SS.del('pstPdpElenco'); SS.del('pstPdpFiltro'); SS.del('pstPdpNomi'); SS.del('pstPdpNomiKo'); SS.del('pstPdpReati'); SS.del('pstPdpReatiDom'); disegna(); });
     document.addEventListener('keydown', e => { if (e.key === 'Escape' && aperto) { if (vista.tipo !== 'elenco') tornaElenco(); else chiudi(); } });
   }
   function avvia() {
     costruisci(); nvBadge(); homeCard();
     let ultimo = location.pathname;
     setTimeout(avvioAutomatico, 5000);
-    setInterval(() => { if (location.pathname !== ultimo) { ultimo = location.pathname; homeCard(); if (/\/home\/?$/.test(ultimo)) setTimeout(avvioAutomatico, 4000); } }, 1500);
+    setInterval(() => { if (/procedimenti/.test(location.pathname) && !inCorso) { try { leggiReatiDom(); } catch (e) {} } if (location.pathname !== ultimo) { ultimo = location.pathname; homeCard(); if (/\/home\/?$/.test(ultimo)) setTimeout(avvioAutomatico, 4000); } }, 1500);
   }
   if (document.body) avvia(); else document.addEventListener('DOMContentLoaded', avvia);
 })();

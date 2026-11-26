@@ -11,7 +11,7 @@
   // la scelta di ufficio, registro e ruolo si rifà a ogni accesso: la esegue lo script nella pagina di scelta
   function vaiCassazione() {
     ss.set('pstCassAuto', '1');
-    ss.del('pstCassPassi'); ss.del('pstCassRiparti');
+    ['pstCassPassi', 'pstCassRiparti', 'pstCassTot', 'pstCassConfermato', 'pstCassEsito', 'pstCassLog'].forEach(ss.del);
     // se l’indirizzo diretto dei ricorsi è già noto (imparato una volta), si va lì; altrimenti si ripete la scelta
     let u = null; try { u = JSON.parse(localStorage.getItem('pstExt_cassUrl')); } catch (e) {}
     location.href = (u && /pst_2_9_1_2\.wp\?/.test(u)) ? u : BASE + 'it/pst_2_9.wp';
